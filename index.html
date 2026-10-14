@@ -1,0 +1,1920 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>RainScope Global Radar</title>
+<meta name="description" content="RainScope — เรดาร์ฝนเรียลไทม์ทั่วโลก รวมเรดาร์ ดาวเทียมค้างฟ้า และโมเดลพยากรณ์ฝน 8 สำนัก">
+<meta name="theme-color" content="#000302">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
+<style>
+:root{
+  /* Layout: radar console. PPI scope centred on a phosphor grid whose crosshair runs edge to edge;
+     instrument panels docked left and right, status strip along the bottom. Phone: scope first, panels stacked. */
+  --void:#000302;      /* screen black */
+  --panel:rgba(0,11,5,.9);
+  --grid:#072110;      /* graticule */
+  --trace:#14562a;     /* dim traces, borders */
+  --dim:#2e9e50;       /* secondary text */
+  --phosphor:#3bff6f;  /* P1 phosphor */
+  --glow:#c6ffd4;      /* hot phosphor */
+  --amber:#ffc23d;     /* caution */
+  --alarm:#ff4b3a;     /* severe */
+  --font-display:"Chakra Petch","Leelawadee UI","Thonburi","Sarabun",system-ui,sans-serif;
+  --font-data:"Share Tech Mono","Chakra Petch","Leelawadee UI","Thonburi",ui-monospace,Menlo,monospace;
+  --cell:64px;
+  --cx:50%;
+  --cy:40%;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;background:var(--void)}
+body{margin:0;min-height:100%;background:var(--void);color:var(--phosphor);font:12px/1.42 var(--font-data);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:1px solid var(--glow);outline-offset:2px}
+
+.console{position:relative;height:100vh;height:100dvh;min-height:560px;display:grid;
+  grid-template-columns:minmax(258px,300px) minmax(0,1fr) minmax(290px,350px);
+  grid-template-rows:auto minmax(0,1fr) auto;
+  grid-template-areas:"top top top" "left center right" "bar bar bar";
+  column-gap:18px;row-gap:12px;
+  padding-block:12px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  background-color:var(--void);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:var(--cell) var(--cell);
+  background-position:var(--cx) var(--cy);
+  isolation:isolate;overflow:hidden}
+.xh{position:absolute;z-index:-1;background:var(--trace);pointer-events:none}
+.xh.h{left:0;right:0;height:1px;top:var(--cy)}
+.xh.v{top:0;bottom:0;width:1px;left:var(--cx)}
+
+/* top bar */
+.top{grid-area:top;display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;padding-bottom:9px;border-bottom:1px solid var(--trace);background:linear-gradient(var(--void),rgba(0,3,2,.85))}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;min-width:0}
+.brand h1{margin:0;font:700 21px/1 var(--font-display);letter-spacing:.2em;color:var(--glow);text-shadow:0 0 14px rgba(59,255,111,.55)}
+.brand .sub{font:500 11px/1.3 var(--font-display);letter-spacing:.1em;color:var(--dim)}
+.site{display:flex;align-items:baseline;gap:10px;min-width:0;flex-wrap:wrap}
+.site b{font:600 15px/1.2 var(--font-display);letter-spacing:.06em;color:var(--glow);overflow-wrap:anywhere}
+.site span{color:var(--dim)}
+.clocks{margin-left:auto;display:flex;gap:18px;align-items:center}
+.clock span{display:block;font:600 9.5px/1 var(--font-display);letter-spacing:.18em;color:var(--dim)}
+.clock b{display:block;font-size:17px;font-weight:400;color:var(--glow);letter-spacing:.04em}
+.live{display:inline-flex;align-items:center;gap:7px;font:600 11px/1 var(--font-display);letter-spacing:.2em}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--phosphor);box-shadow:0 0 8px var(--phosphor);animation:blink 1.4s steps(2,start) infinite}
+.live[data-s="down"]{color:var(--alarm)}
+.live[data-s="down"] i{background:var(--alarm);box-shadow:0 0 8px var(--alarm)}
+@keyframes blink{to{opacity:.15}}
+
+/* columns */
+.col{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--trace) transparent;padding-right:2px}
+.col.left{grid-area:left}
+.col.right{grid-area:right}
+.center{grid-area:center;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0;min-height:0}
+
+/* panels */
+.panel{position:relative;background:var(--panel);border:1px solid var(--trace);padding:9px 11px 10px;min-width:0;flex:none}
+.panel::before,.panel::after{content:"";position:absolute;width:8px;height:8px;border:1px solid var(--phosphor);pointer-events:none}
+.panel::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+.panel::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+.ph{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 7px;font:600 10.5px/1.25 var(--font-display);letter-spacing:.16em;color:var(--dim);text-transform:uppercase}
+.ph b{color:var(--phosphor);font-weight:600}
+.ph small{font:10px/1.2 var(--font-data);letter-spacing:.03em;text-transform:none;color:var(--dim);text-align:right}
+.dim{color:var(--dim)}
+.amber{color:var(--amber)}
+.alarm{color:var(--alarm)}
+.glow{color:var(--glow)}
+.empty{color:var(--dim);text-align:left!important;white-space:normal!important;padding:8px 4px!important;font-family:var(--font-display)}
+.note{margin:7px 0 0;color:var(--dim);font:11px/1.45 var(--font-display)}
+
+/* tables */
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{font:600 9.5px/1.2 var(--font-display);letter-spacing:.1em;color:var(--dim);text-align:right;padding:2px 4px 4px;border-bottom:1px solid var(--trace);white-space:nowrap}
+td{text-align:right;padding:3px 4px;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+tr.hot td{color:var(--glow)}
+tr.threat td{color:var(--amber)}
+tr.sev td{color:var(--alarm)}
+
+/* readouts (bare, like the console margin text) */
+.readouts{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;padding:4px 2px 2px;background:rgba(0,3,2,.75)}
+.readouts span{color:var(--dim)}
+.readouts b{font-weight:400;color:var(--glow);text-shadow:0 0 6px rgba(59,255,111,.35)}
+.readouts .hint{grid-column:1/-1;margin:2px 0 0;color:var(--dim);font:11px/1.4 var(--font-display)}
+.readouts .key{grid-column:1/-1;justify-self:start}
+
+/* scope */
+.scope{position:relative;width:min(100%,calc(100vh - 250px));aspect-ratio:1/1;max-width:100%;flex:none}
+@supports (height:100dvh){.scope{width:min(100%,calc(100dvh - 250px))}}
+.scope canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+.scope::after{content:"";position:absolute;inset:6%;border-radius:50%;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.2) 0 1px,transparent 1px 3px)}
+.hud{position:absolute;font-size:10.5px;line-height:1.35;color:var(--dim);pointer-events:none;max-width:30%}
+.hud b{font-weight:400;color:var(--phosphor)}
+.hud.tl{top:0;left:0}
+.hud.tr{top:0;right:0;text-align:right}
+.hud.bl{bottom:0;left:0}
+.hud.br{bottom:0;right:0;text-align:right}
+.legend{display:flex;gap:2px;margin-top:3px}
+.legend i{display:block;width:16px;height:6px}
+.legend-n{display:flex;gap:2px;font-size:9px}
+.legend-n span{width:16px;text-align:left}
+.tip{position:absolute;z-index:3;pointer-events:none;background:rgba(0,10,4,.92);border:1px solid var(--phosphor);padding:4px 7px;font-size:11px;line-height:1.35;color:var(--glow);white-space:nowrap;transform:translate(14px,-50%)}
+.threat-flag{position:absolute;left:50%;top:12%;transform:translateX(-50%);font:600 11px/1 var(--font-display);letter-spacing:.12em;white-space:nowrap;color:var(--amber);border:1px solid var(--amber);background:rgba(20,12,0,.85);padding:4px 8px;pointer-events:none}
+
+/* controls */
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;align-items:center;width:100%;max-width:960px}
+.grp{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.lbl{font:600 9.5px/1 var(--font-display);letter-spacing:.18em;color:var(--dim)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--trace);background:rgba(0,8,3,.9)}
+.seg button{background:transparent;border:0;border-right:1px solid var(--trace);padding:6px 9px;min-height:30px;letter-spacing:.05em;color:var(--dim)}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:var(--phosphor)}
+.seg button[aria-pressed="true"]{background:rgba(59,255,111,.15);color:var(--glow);text-shadow:0 0 8px rgba(59,255,111,.6)}
+.key{background:rgba(0,8,3,.9);border:1px solid var(--trace);padding:6px 10px;min-height:30px;color:var(--phosphor);letter-spacing:.06em}
+.key:hover{border-color:var(--phosphor)}
+.key[aria-pressed="true"]{background:rgba(59,255,111,.15);color:var(--glow)}
+select{appearance:none;-webkit-appearance:none;background:rgba(0,8,3,.95);border:1px solid var(--trace);padding:6px 24px 6px 9px;min-height:30px;color:var(--phosphor);max-width:220px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--phosphor) 50%),linear-gradient(135deg,var(--phosphor) 50%,transparent 50%);
+  background-position:calc(100% - 13px) 50%,calc(100% - 8px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+select option,select optgroup{background:#021006;color:var(--phosphor)}
+.search{position:relative}
+.search input{background:rgba(0,8,3,.95);border:1px solid var(--trace);padding:6px 9px;min-height:30px;width:190px;color:var(--glow)}
+.search input::placeholder{color:var(--dim)}
+.search ul{position:absolute;z-index:20;left:0;right:auto;top:calc(100% + 2px);min-width:100%;width:max-content;max-width:min(320px,80vw);margin:0;padding:0;list-style:none;background:#010d05;border:1px solid var(--phosphor)}
+.search li button{display:block;width:100%;text-align:left;background:transparent;border:0;padding:7px 10px;color:var(--phosphor);font-family:var(--font-display);white-space:normal}
+.search li button:hover,.search li button:focus-visible{background:rgba(59,255,111,.15)}
+.search li small{color:var(--dim)}
+
+.timeline{display:flex;align-items:center;gap:10px;width:100%;max-width:960px;justify-content:center;flex-wrap:wrap}
+.ticks{display:flex;gap:3px;align-items:flex-end}
+.ticks button{width:16px;height:22px;padding:0;border:0;background:transparent;display:flex;align-items:flex-end;justify-content:center}
+.ticks button i{display:block;width:4px;height:10px;background:var(--trace)}
+.ticks button[data-ok="1"] i{background:var(--dim)}
+.ticks button[aria-current="true"] i{background:var(--glow);height:18px;box-shadow:0 0 8px var(--phosphor)}
+.frame-lbl{min-width:150px;color:var(--dim)}
+.frame-lbl b{color:var(--glow);font-weight:400}
+
+/* status panel */
+.p-status .head{margin:2px 0 6px;font:600 18px/1.3 var(--font-display);color:var(--glow);text-shadow:0 0 12px rgba(59,255,111,.45);text-wrap:balance}
+.p-status[data-l="2"] .head{color:var(--amber);text-shadow:0 0 12px rgba(255,194,61,.4)}
+.p-status[data-l="3"] .head{color:var(--alarm);text-shadow:0 0 12px rgba(255,75,58,.45)}
+.p-status[data-l="2"]{border-color:var(--amber)}
+.p-status[data-l="3"]{border-color:var(--alarm)}
+.p-status ul{margin:0;padding:0;list-style:none;display:grid;gap:3px;font:12.5px/1.45 var(--font-display);color:var(--phosphor)}
+.p-status li::before{content:"▸ ";color:var(--dim)}
+.p-status li.warn{color:var(--amber)}
+
+/* charts */
+svg.chart{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font:9.5px var(--font-data);fill:var(--dim)}
+.chart .ax{stroke:var(--trace);stroke-width:1}
+.chart .gl{stroke:var(--grid);stroke-width:1}
+.chart .b{fill:var(--phosphor)}
+.chart .b.past{fill:var(--trace)}
+.chart .b.hv{fill:var(--glow)}
+.chart .b.am{fill:var(--amber)}
+.chart .now{stroke:var(--glow);stroke-width:1;stroke-dasharray:2 2}
+.chart .pl{fill:none;stroke:var(--amber);stroke-width:1.3}
+.chart .pd{fill:var(--amber)}
+.chart .ts{fill:none;stroke:var(--alarm);stroke-width:1.4}
+.chart .lbl-now{fill:var(--glow)}
+.sumline{margin:6px 0 0;font:12px/1.45 var(--font-display);color:var(--phosphor)}
+.keyline{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:5px;font-size:10px;color:var(--dim)}
+.keyline i{display:inline-block;width:10px;height:3px;vertical-align:middle;margin-right:4px}
+
+/* bars in tables */
+.mbar{display:inline-block;height:6px;background:var(--phosphor);vertical-align:middle;box-shadow:0 0 6px rgba(59,255,111,.5)}
+.mbar.am{background:var(--amber)}
+td.barcell{width:42%;text-align:left}
+
+/* atmosphere grid */
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 14px}
+.kv div{display:flex;flex-direction:column;gap:1px;border-left:1px solid var(--trace);padding-left:7px;min-width:0}
+.kv span{color:var(--dim);font:600 9px/1.3 var(--font-display);letter-spacing:.12em;white-space:nowrap}
+.kv b{font-weight:400;font-size:12.5px;color:var(--glow);overflow-wrap:anywhere}
+
+/* sat roster */
+.sat-row td:first-child{display:flex;align-items:center;gap:6px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--trace);flex:none}
+.dot[data-s="ok"]{background:var(--phosphor);box-shadow:0 0 6px var(--phosphor)}
+.dot[data-s="warn"]{background:var(--amber)}
+.dot[data-s="down"]{background:var(--alarm)}
+tr.active td{color:var(--glow)}
+.use{background:transparent;border:1px solid var(--trace);color:var(--dim);padding:2px 6px;font-size:10px}
+.use[aria-pressed="true"]{border-color:var(--phosphor);color:var(--glow)}
+
+/* world inset */
+.p-world canvas{display:block;width:100%;aspect-ratio:1.9/1;max-width:100%;cursor:crosshair;touch-action:manipulation;background:#000a03}
+
+/* status bar */
+.bar{grid-area:bar;display:flex;flex-wrap:wrap;align-items:center;gap:5px 18px;padding-top:8px;border-top:1px solid var(--trace);font-size:10.5px;color:var(--dim);background:rgba(0,3,2,.85)}
+.src{display:inline-flex;align-items:center;gap:6px;letter-spacing:.05em}
+.src i{width:7px;height:7px;border-radius:50%;background:var(--trace)}
+.src[data-s="ok"] i{background:var(--phosphor);box-shadow:0 0 6px var(--phosphor)}
+.src[data-s="ok"]{color:var(--phosphor)}
+.src[data-s="warn"] i{background:var(--amber)}
+.src[data-s="warn"]{color:var(--amber)}
+.src[data-s="down"] i{background:var(--alarm)}
+.src[data-s="down"]{color:var(--alarm)}
+.bar .credit{margin-left:auto;max-width:100%}
+.bar a{color:var(--dim)}
+.bar a:hover{color:var(--phosphor)}
+
+/* ---------- tablet & phone: one scrolling page ---------- */
+@media (max-width:1179px){
+  .console{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:none;grid-template-rows:none;grid-auto-flow:row dense;height:auto;min-height:0;overflow:visible}
+  .top,.center,.bar,.col.left,.col.right{grid-area:auto}
+  .col{display:contents}
+  .top,.center,.bar,.p-status{grid-column:1/-1}
+  .top{order:1}.p-status{order:3}.center{order:4}
+  .p-read{order:5}.p-now{order:6}.p-track{order:7}.p-hour{order:8}.p-day{order:9}.p-atmo{order:10}.p-models{order:11}.p-world{order:12}.p-sats{order:13}.bar{order:14}
+  .p-now,.p-hour,.p-track{grid-column:1/-1}
+  .scope{width:min(100%,720px)}
+  .clocks{margin-left:0}
+}
+@media (max-width:719px){
+  .console{grid-template-columns:minmax(0,1fr);row-gap:10px}
+  .p-read,.p-day,.p-atmo,.p-models,.p-world,.p-sats{grid-column:1/-1}
+  .brand h1{font-size:19px}
+  .hud{font-size:9.5px}
+  .hud .xs{display:none}
+  .search{flex:1 1 170px}
+  .search input{width:100%}
+  .clock b{font-size:15px}
+  .p-status .head{font-size:17px}
+}
+@media (prefers-reduced-motion:reduce){
+  .live i{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="console" id="console">
+  <div class="xh h" aria-hidden="true"></div>
+  <div class="xh v" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="brand">
+      <h1>RAINSCOPE</h1>
+      <span class="sub">GLOBAL PRECIPITATION RADAR · เรดาร์ฝนทั่วโลก</span>
+    </div>
+    <div class="site">
+      <span class="lbl">SITE</span>
+      <b id="siteName">กรุงเทพฯ · Bangkok</b>
+      <span id="siteCoord">13.7563N 100.5018E</span>
+    </div>
+    <div class="clocks">
+      <div class="clock"><span>UTC</span><b id="clkUtc">--:--:--</b></div>
+      <div class="clock"><span id="clkLocLbl">LOCAL</span><b id="clkLoc">--:--:--</b></div>
+      <div class="live" id="liveTag" data-s="ok"><i></i><span id="liveTxt">LIVE</span></div>
+    </div>
+  </header>
+
+  <aside class="col left">
+    <section class="panel p-track" aria-labelledby="hTrack">
+      <h2 class="ph" id="hTrack"><b>CELL TRACK · กลุ่มฝน</b><small id="trackMeta">≥30 dBZ</small></h2>
+      <div class="tw"><table>
+        <thead><tr><th>ID</th><th>BRG</th><th>KM</th><th>dBZ</th><th>MM/H</th><th>MOVE</th><th>ETA</th></tr></thead>
+        <tbody id="trackBody"><tr><td colspan="7" class="empty">รอข้อมูลเรดาร์…</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section class="readouts p-read" id="pRead">
+      <span>▸ BEAM</span><b id="roBeam">000.0°</b>
+      <span>▸ AZ</span><b id="roAz">—</b>
+      <span>▸ RNG</span><b id="roRng">—</b>
+      <span>▸ LAT</span><b id="roLat">—</b>
+      <span>▸ LON</span><b id="roLon">—</b>
+      <span>▸ ECHO</span><b id="roEcho">—</b>
+      <button class="key" id="btnCenter" type="button" hidden>⊕ ย้ายศูนย์เรดาร์มาที่จุดนี้</button>
+      <p class="hint" id="roHint">ชี้หรือแตะบนจอเรดาร์เพื่ออ่านทิศ ระยะ และความแรงฝน</p>
+    </section>
+
+    <section class="panel p-atmo" aria-labelledby="hAtmo">
+      <h2 class="ph" id="hAtmo"><b>ATMOSPHERE · บรรยากาศ</b><small id="atmoMeta">—</small></h2>
+      <div class="kv" id="atmo"><div><span>WX</span><b>—</b></div></div>
+    </section>
+
+    <section class="panel p-world" aria-labelledby="hWorld">
+      <h2 class="ph" id="hWorld"><b>GLOBAL · ทั่วโลก</b><small>แตะแผนที่เพื่อย้ายเรดาร์</small></h2>
+      <canvas id="world" aria-label="World map of radar echoes and geostationary satellites. Tap to move the radar."></canvas>
+      <div class="keyline"><span><i style="background:var(--glow)"></i>RADAR ECHO</span><span><i style="background:var(--trace)"></i>GEO IR CLOUD</span><span><i style="background:var(--amber)"></i>SAT SUB-POINT</span></div>
+    </section>
+  </aside>
+
+  <main class="center">
+    <div class="scope" id="scopeBox">
+      <canvas id="scope" aria-label="Rain radar plan position indicator"></canvas>
+      <div class="hud tl" id="hudTL"></div>
+      <div class="hud tr" id="hudTR"></div>
+      <div class="hud bl" id="hudBL"></div>
+      <div class="hud br" id="hudBR"></div>
+      <div class="threat-flag" id="threatFlag" hidden></div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+
+    <div class="ctrl">
+      <div class="grp"><span class="lbl">RANGE KM</span>
+        <div class="seg" id="segRange" role="group" aria-label="Range">
+          <button type="button" data-v="50">50</button><button type="button" data-v="100">100</button><button type="button" data-v="200">200</button><button type="button" data-v="400">400</button><button type="button" data-v="800">800</button>
+        </div>
+      </div>
+      <div class="grp"><span class="lbl">LAYER</span>
+        <div class="seg" id="segLayer" role="group" aria-label="Layers">
+          <button type="button" data-l="radar">RADAR</button><button type="button" data-l="sat">SAT IR</button><button type="button" data-l="gpm">GPM</button><button type="button" data-l="cov">COVER</button><button type="button" data-l="map">MAP</button><button type="button" data-l="cells">TRACK</button>
+        </div>
+      </div>
+      <div class="grp"><span class="lbl">SAT</span>
+        <select id="satSel" aria-label="Satellite source"></select>
+      </div>
+      <div class="grp">
+        <button class="key" id="btnGps" type="button">⌖ ตำแหน่งฉัน</button>
+        <select id="preset" aria-label="Preset locations"></select>
+        <div class="search">
+          <input id="q" type="search" autocomplete="off" placeholder="ค้นหาสถานที่ / search" aria-label="Search place">
+          <ul id="qres" hidden></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <button class="key" id="btnPlay" type="button" aria-pressed="false">▶ LOOP 2H</button>
+      <div class="ticks" id="ticks" role="group" aria-label="Radar frames"></div>
+      <span class="frame-lbl" id="frameLbl">FRAME <b>--:--</b></span>
+    </div>
+  </main>
+
+  <aside class="col right">
+    <section class="panel p-status" id="pStatus" data-l="0" aria-live="polite">
+      <h2 class="ph"><b>RAIN STATUS · สถานะฝน</b><small id="statusMeta">—</small></h2>
+      <p class="head" id="statusHead">กำลังเชื่อมต่อเรดาร์…</p>
+      <ul id="statusList"></ul>
+    </section>
+
+    <section class="panel p-now" aria-labelledby="hNow">
+      <h2 class="ph" id="hNow"><b>NOWCAST · 3 ชม.ข้างหน้า</b><small>MODEL 15-MIN · mm/h</small></h2>
+      <div id="nowChart"></div>
+      <p class="sumline" id="nowSum">—</p>
+    </section>
+
+    <section class="panel p-hour" aria-labelledby="hHour">
+      <h2 class="ph" id="hHour"><b>24 HOURS · รายชั่วโมง</b><small>mm/h · % PROB</small></h2>
+      <div id="hourChart"></div>
+      <div class="keyline"><span><i style="background:var(--phosphor)"></i>ปริมาณฝน</span><span><i style="background:var(--amber)"></i>โอกาสเกิดฝน %</span><span><i style="background:var(--alarm)"></i>ฟ้าคะนอง</span></div>
+    </section>
+
+    <section class="panel p-day" aria-labelledby="hDay">
+      <h2 class="ph" id="hDay"><b>7 DAYS · รายวัน</b><small>mm · % · ชม.ฝน</small></h2>
+      <div class="tw"><table>
+        <thead><tr><th>DAY</th><th>WX</th><th>RAIN</th><th></th><th>PROB</th><th>HRS</th></tr></thead>
+        <tbody id="dayBody"><tr><td colspan="6" class="empty">รอข้อมูลพยากรณ์…</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section class="panel p-models" aria-labelledby="hModels">
+      <h2 class="ph" id="hModels"><b>MODELS · 8 สำนัก</b><small id="modelMeta">—</small></h2>
+      <div class="tw"><table>
+        <thead><tr><th>MODEL</th><th>6H</th><th>24H MM</th><th></th><th>1ST</th></tr></thead>
+        <tbody id="modelBody"><tr><td colspan="5" class="empty">รอข้อมูลโมเดล…</td></tr></tbody>
+      </table></div>
+      <p class="note" id="modelNote"></p>
+    </section>
+
+    <section class="panel p-sats" aria-labelledby="hSats">
+      <h2 class="ph" id="hSats"><b>SATELLITES · ดาวเทียม</b><small>EL = มุมเงยจากจุดนี้</small></h2>
+      <div class="tw"><table>
+        <thead><tr><th>SAT</th><th>SUB-PT</th><th>EL</th><th>FEED</th><th></th></tr></thead>
+        <tbody id="satBody"></tbody>
+      </table></div>
+      <p class="note">ดาวเทียมค้างฟ้า 5 ดวงที่มีภาพแบบแผนที่สาธารณะ ครอบคลุมรอบโลก และ GPM IMERG ที่รวมดาวเทียมไมโครเวฟหลายดวงเป็นแผนที่ฝน</p>
+    </section>
+  </aside>
+
+  <footer class="bar" id="bar">
+    <span class="src" id="srcRadar" data-s="wait"><i></i>RADAR —</span>
+    <span class="src" id="srcSat" data-s="wait"><i></i>SAT —</span>
+    <span class="src" id="srcNwp" data-s="wait"><i></i>NWP —</span>
+    <span class="src" id="srcModels" data-s="wait"><i></i>MODELS —</span>
+    <span class="src" id="srcMap" data-s="wait"><i></i>MAP —</span>
+    <span id="barNext">NEXT SCAN —</span>
+    <span class="credit">RADAR <a href="https://www.rainviewer.com" target="_blank" rel="noopener">RainViewer</a> · SAT <a href="https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api" target="_blank" rel="noopener">NASA GIBS</a> / <a href="https://view.eumetsat.int" target="_blank" rel="noopener">EUMETSAT</a> · NWP <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) · MAP © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></span>
+  </footer>
+</div>
+
+<noscript><p style="color:#3bff6f;padding:16px">RainScope ต้องเปิด JavaScript</p></noscript>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= helpers ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const D2R = Math.PI / 180, R2D = 180 / Math.PI, TAU = Math.PI * 2;
+const RE = 6378137, WORLD = TAU * RE, HALF = WORLD / 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const pad = (n, w = 2) => String(Math.trunc(Math.abs(n))).padStart(w, '0');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const mercX = lon => RE * lon * D2R;
+const mercY = lat => RE * Math.log(Math.tan(Math.PI / 4 + clamp(lat, -85.05, 85.05) * D2R / 2));
+const lonOf = x => x / RE * R2D;
+const latOf = y => (2 * Math.atan(Math.exp(y / RE)) - Math.PI / 2) * R2D;
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('rainscope.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('rainscope.' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
+};
+const fmtLat = v => Math.abs(v).toFixed(4) + (v >= 0 ? 'N' : 'S');
+const fmtLon = v => Math.abs(v).toFixed(4) + (v >= 0 ? 'E' : 'W');
+const fmtKm = v => v < 10 ? v.toFixed(1) : String(Math.round(v));
+const fmtRing = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+
+function hav(lat1, lon1, lat2, lon2) {
+  const dLat = (lat2 - lat1) * D2R, dLon = (lon2 - lon1) * D2R;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * D2R) * Math.cos(lat2 * D2R) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371.0088 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+function brg(lat1, lon1, lat2, lon2) {
+  const y = Math.sin((lon2 - lon1) * D2R) * Math.cos(lat2 * D2R);
+  const x = Math.cos(lat1 * D2R) * Math.sin(lat2 * D2R) - Math.sin(lat1 * D2R) * Math.cos(lat2 * D2R) * Math.cos((lon2 - lon1) * D2R);
+  return (Math.atan2(y, x) * R2D + 360) % 360;
+}
+function destPt(lat, lon, bDeg, dRad) {
+  const p1 = lat * D2R, l1 = lon * D2R, t = bDeg * D2R;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(dRad) + Math.cos(p1) * Math.sin(dRad) * Math.cos(t));
+  const l2 = l1 + Math.atan2(Math.sin(t) * Math.sin(dRad) * Math.cos(p1), Math.cos(dRad) - Math.sin(p1) * Math.sin(p2));
+  return [p2 * R2D, ((l2 * R2D + 540) % 360) - 180];
+}
+const DIR16 = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const DIR8TH = ['ทิศเหนือ', 'ทิศตะวันออกเฉียงเหนือ', 'ทิศตะวันออก', 'ทิศตะวันออกเฉียงใต้', 'ทิศใต้', 'ทิศตะวันตกเฉียงใต้', 'ทิศตะวันตก', 'ทิศตะวันตกเฉียงเหนือ'];
+const dir16 = b => DIR16[Math.round(((b % 360) + 360) % 360 / 22.5) % 16];
+const dirTh = b => DIR8TH[Math.round(((b % 360) + 360) % 360 / 45) % 8];
+
+/* rain physics: Marshall–Palmer Z = 200 R^1.6 */
+const rainRate = dbz => Math.pow(Math.pow(10, dbz / 10) / 200, 1 / 1.6);
+function intensity(dbz) {
+  if (dbz >= 55) return { th: 'รุนแรง อาจมีลูกเห็บ', en: 'SEVERE', l: 3 };
+  if (dbz >= 45) return { th: 'หนักมาก', en: 'V.HEAVY', l: 3 };
+  if (dbz >= 38) return { th: 'หนัก', en: 'HEAVY', l: 2 };
+  if (dbz >= 28) return { th: 'ปานกลาง', en: 'MOD', l: 1 };
+  return { th: 'เบา', en: 'LIGHT', l: 0 };
+}
+/* WMO weather code -> METAR present-weather group + Thai */
+const WMO = {
+  0: ['CLR', 'ฟ้าโปร่ง'], 1: ['FEW', 'โปร่งเป็นส่วนใหญ่'], 2: ['SCT', 'มีเมฆบางส่วน'], 3: ['OVC', 'เมฆมาก'],
+  45: ['FG', 'หมอก'], 48: ['FZFG', 'หมอกน้ำแข็ง'],
+  51: ['-DZ', 'ฝนละอองเบา'], 53: ['DZ', 'ฝนละออง'], 55: ['+DZ', 'ฝนละอองหนา'], 56: ['FZDZ', 'ฝนละอองเยือกแข็ง'], 57: ['+FZDZ', 'ฝนละอองเยือกแข็ง'],
+  61: ['-RA', 'ฝนเล็กน้อย'], 63: ['RA', 'ฝนปานกลาง'], 65: ['+RA', 'ฝนหนัก'], 66: ['FZRA', 'ฝนเยือกแข็ง'], 67: ['+FZRA', 'ฝนเยือกแข็งหนัก'],
+  71: ['-SN', 'หิมะเล็กน้อย'], 73: ['SN', 'หิมะ'], 75: ['+SN', 'หิมะหนัก'], 77: ['SG', 'เกล็ดหิมะ'],
+  80: ['-SHRA', 'ฝนซู่เล็กน้อย'], 81: ['SHRA', 'ฝนซู่'], 82: ['+SHRA', 'ฝนซู่รุนแรง'], 85: ['SHSN', 'หิมะซู่'], 86: ['+SHSN', 'หิมะซู่หนัก'],
+  95: ['TSRA', 'พายุฝนฟ้าคะนอง'], 96: ['TSGR', 'ฟ้าคะนอง มีลูกเห็บ'], 99: ['+TSGR', 'ฟ้าคะนองรุนแรง มีลูกเห็บ']
+};
+const wmo = c => WMO[c] || ['—', '—'];
+
+/* ================= sources ================= */
+const RV_API = 'https://api.rainviewer.com/public/weather-maps.json';
+const OM_API = 'https://api.open-meteo.com/v1/forecast';
+const GEO_API = 'https://geocoding-api.open-meteo.com/v1/search';
+const REV_API = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
+const GIBS_WMS = 'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi';
+const EUM_WMS = 'https://view.eumetsat.int/geoserver/wms';
+const cartoURL = (z, x, y) => `https://${'abcd'[(x + y) % 4]}.basemaps.cartocdn.com/dark_nolabels/${z}/${x}/${y}@2x.png`;
+
+const SATS = [
+  { id: 'H9', name: 'HIMAWARI-9', agency: 'JMA', lon: 140.7, sensor: 'AHI B13 10.4µm', wms: GIBS_WMS, layer: 'Himawari_AHI_Band13_Clean_Infrared', prov: 'NASA GIBS', status: 'wait' },
+  { id: 'G19', name: 'GOES-19 EAST', agency: 'NOAA', lon: -75.2, sensor: 'ABI B13 10.3µm', wms: GIBS_WMS, layer: 'GOES-East_ABI_Band13_Clean_Infrared', prov: 'NASA GIBS', status: 'wait' },
+  { id: 'G18', name: 'GOES-18 WEST', agency: 'NOAA', lon: -137.2, sensor: 'ABI B13 10.3µm', wms: GIBS_WMS, layer: 'GOES-West_ABI_Band13_Clean_Infrared', prov: 'NASA GIBS', status: 'wait' },
+  { id: 'MTG', name: 'METEOSAT-12 MTG', agency: 'EUMETSAT', lon: 0.0, sensor: 'FCI IR10.5µm', wms: EUM_WMS, layer: 'mtg_fd:ir105_hrfi', prov: 'EUMETView', status: 'wait' },
+  { id: 'M9', name: 'METEOSAT-9 IODC', agency: 'EUMETSAT', lon: 45.5, sensor: 'SEVIRI IR10.8µm', wms: EUM_WMS, layer: 'msg_iodc:ir108', prov: 'EUMETView', status: 'wait' }
+];
+const GPM = { id: 'GPM', name: 'GPM IMERG', agency: 'NASA/JAXA', sensor: 'MW+IR precip', wms: GIBS_WMS, layer: 'IMERG_Precipitation_Rate', prov: 'NASA GIBS', status: 'wait' };
+const MODELS = [
+  { id: 'ecmwf_ifs025', name: 'ECMWF IFS' }, { id: 'gfs_seamless', name: 'NOAA GFS' }, { id: 'icon_seamless', name: 'DWD ICON' },
+  { id: 'jma_seamless', name: 'JMA GSM' }, { id: 'cma_grapes_global', name: 'CMA GRAPES' }, { id: 'gem_seamless', name: 'CMC GEM' },
+  { id: 'ukmo_seamless', name: 'UKMO UM' }, { id: 'meteofrance_seamless', name: 'MF ARPEGE' }
+];
+const PRESETS = [
+  ['ประเทศไทย', [
+    ['กรุงเทพฯ · Bangkok', 13.7563, 100.5018], ['เชียงใหม่ · Chiang Mai', 18.7883, 98.9853], ['เชียงราย · Chiang Rai', 19.9105, 99.8406],
+    ['พิษณุโลก · Phitsanulok', 16.8211, 100.2659], ['นครสวรรค์ · Nakhon Sawan', 15.7047, 100.1372], ['ขอนแก่น · Khon Kaen', 16.4322, 102.8236],
+    ['อุดรธานี · Udon Thani', 17.4138, 102.7872], ['นครราชสีมา · Korat', 14.9799, 102.0978], ['อุบลราชธานี · Ubon', 15.2287, 104.8564],
+    ['พัทยา · Pattaya', 12.9236, 100.8825], ['ระยอง · Rayong', 12.6814, 101.2816], ['หัวหิน · Hua Hin', 12.5684, 99.9577],
+    ['สุราษฎร์ธานี · Surat Thani', 9.1382, 99.3215], ['ภูเก็ต · Phuket', 7.8804, 98.3923], ['หาดใหญ่ · Hat Yai', 7.0086, 100.4747]]],
+  ['Asia–Pacific', [
+    ['Tokyo', 35.6762, 139.6503], ['Seoul', 37.5665, 126.978], ['Shanghai', 31.2304, 121.4737], ['Hong Kong', 22.3193, 114.1694],
+    ['Taipei', 25.033, 121.5654], ['Manila', 14.5995, 120.9842], ['Hanoi', 21.0278, 105.8342], ['Ho Chi Minh City', 10.8231, 106.6297],
+    ['Vientiane', 17.9757, 102.6331], ['Phnom Penh', 11.5564, 104.9282], ['Yangon', 16.8409, 96.1735], ['Kuala Lumpur', 3.139, 101.6869],
+    ['Singapore', 1.3521, 103.8198], ['Jakarta', -6.2088, 106.8456], ['Mumbai', 19.076, 72.8777], ['Kolkata', 22.5726, 88.3639], ['Sydney', -33.8688, 151.2093]]],
+  ['Europe · Americas', [
+    ['London', 51.5072, -0.1276], ['Paris', 48.8566, 2.3522], ['Berlin', 52.52, 13.405], ['Madrid', 40.4168, -3.7038],
+    ['New York', 40.7128, -74.006], ['Miami', 25.7617, -80.1918], ['Houston', 29.7604, -95.3698], ['Chicago', 41.8781, -87.6298],
+    ['Los Angeles', 34.0522, -118.2437], ['Toronto', 43.6532, -79.3832], ['São Paulo', -23.5505, -46.6333]]]
+];
+const ALL_PLACES = PRESETS.flatMap(g => g[1]);
+
+/* RainViewer "Universal Blue" (scheme 2) rain colours, dBZ -10..65, RRGGBBAA */
+const UB = ('63615914 66635a19 69665c1e 6c685d24 6f6b5f29 726e612e 75706234 78736439 7c75653e 7f786744 827b6949 857d6a4e 88806c54 8b826d59 8e856f5e ' +
+  '92887164 9e93756e aa9e7978 b6a97e82 c2b4828c cec08796 d2c48ba0 d6c88faa dacc93b4 ded097be 88ddeeff 6cd1ebff 51c5e8ff 36bae5ff 1baee2ff ' +
+  '00a3e0ff 009ad5ff 0091caff 0088bfff 007fb4ff 0077aaff 0070a3ff 00699cff 006295ff 005b8eff 005588ff 005180ff 004e78ff 004a70ff 004768ff ' +
+  'ffee00ff ffe000ff ffd200ff ffc500ff ffb700ff ffaa00ff ff9f00ff ff9500ff ff8b00ff ff8100ff ff4400ff f23600ff e62800ff d91b00ff cd0d00ff ' +
+  'c10000ff a80000ff 8f0000ff 760000ff 5d0000ff ffaaffff ff9fffff ff95ffff ff8bffff ff81ffff ff77ffff ff6cffff ff62ffff ff58ffff ff4effff ffffffff')
+  .split(' ').map((h, i) => [i - 10, parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), parseInt(h.slice(6, 8), 16)]);
+const ubCache = new Map();
+function ubDecode(r, g, b, a, key) {
+  let v = ubCache.get(key);
+  if (v !== undefined) return v;
+  let best = Infinity; v = -128;
+  for (let i = 0; i < UB.length; i++) {
+    const e = UB[i];
+    const d = (r - e[1]) ** 2 + (g - e[2]) ** 2 + (b - e[3]) ** 2 + 2 * (a - e[4]) ** 2;
+    if (d < best) { best = d; v = e[0]; }
+  }
+  if (ubCache.size < 60000) ubCache.set(key, v);
+  return v;
+}
+
+/* phosphor ramp: dBZ -> RGBA on the scope */
+function phosRGBA(v) {
+  if (v < 8) return null;
+  if (v >= 55) return [255, 75, 58, 255];
+  if (v >= 50) return [255, 194, 61, 255];
+  if (v >= 45) return [228, 255, 234, 255];
+  const S = [[8, 18, 92, 38, 80], [18, 30, 170, 70, 165], [28, 59, 255, 111, 228], [38, 150, 255, 186, 255], [45, 228, 255, 234, 255]];
+  for (let i = 0; i < S.length - 1; i++) {
+    const a = S[i], b = S[i + 1];
+    if (v < b[0]) { const t = (v - a[0]) / (b[0] - a[0]); return [1, 2, 3, 4].map(k => Math.round(lerp(a[k], b[k], t))); }
+  }
+  return [228, 255, 234, 255];
+}
+const PLUT = new Uint32Array(256);
+for (let v = -128; v < 128; v++) {
+  const c = phosRGBA(v);
+  PLUT[v + 128] = c ? (((c[3] << 24) | (c[2] << 16) | (c[1] << 8) | c[0]) >>> 0) : 0;
+}
+
+/* ================= state ================= */
+const UI = {
+  range: store.get('range', 200),
+  layers: Object.assign({ radar: true, sat: true, gpm: false, cov: true, map: true, cells: true }, store.get('layers', {})),
+  sat: store.get('sat', 'auto'),
+  mode: 'live',
+  reduce: matchMedia('(prefers-reduced-motion: reduce)').matches
+};
+const SWEEP_S = 5;
+let LOC = store.get('loc', null) || { lat: 13.7563, lon: 100.5018, name: 'กรุงเทพฯ · Bangkok' };
+let VIEW = null, GEN = 0;
+let TZ = { off: -new Date().getTimezoneOffset() * 60, lbl: 'LOCAL' };
+const RV = { host: null, frames: [], idx: -1, z: 7, data: new Map(), pending: new Map(), lastCheck: 0, lastNew: 0, fail: 0 };
+const MAP = { box: null }, SAT = { box: null, cur: null }, GPMX = { box: null }, COV = { box: null, covered: null };
+const OM = { data: null, models: null, key: '' };
+const SRC = {};
+let THREAT = null, PROBE = null;
+
+/* ================= network ================= */
+function fetchJSON(url, ms = 20000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  return fetch(url, { signal: ctl.signal, credentials: 'omit' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .finally(() => clearTimeout(t));
+}
+function loadImg(url, cors, ms = 25000) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    if (cors) img.crossOrigin = 'anonymous';
+    img.decoding = 'async';
+    const t = setTimeout(() => { img.onload = img.onerror = null; img.src = ''; rej(new Error('timeout')); }, ms);
+    img.onload = () => { clearTimeout(t); res(img); };
+    img.onerror = () => { clearTimeout(t); rej(new Error('load')); };
+    img.src = url;
+  });
+}
+const corsBad = new Set();
+async function loadTile(url, wantCors, ms) {
+  const host = new URL(url).host;
+  if (wantCors && !corsBad.has(host)) {
+    try { return { img: await loadImg(url, true, ms), clean: true }; } catch (e) { /* retry without CORS */ }
+    const img = await loadImg(url, false, ms);
+    corsBad.add(host);
+    return { img, clean: false };
+  }
+  return { img: await loadImg(url, false, ms), clean: false };
+}
+/* token bucket so RainViewer stays under its 100 requests/min/IP limit */
+function makeLimiter(perMin) {
+  const q = [[], []]; let tokens = perMin, last = performance.now(), timer = 0;
+  function pump() {
+    timer = 0;
+    const now = performance.now();
+    tokens = Math.min(perMin, tokens + (now - last) * perMin / 60000); last = now;
+    while (q[0].length || q[1].length) {
+      const qq = q[0].length ? q[0] : q[1], it = qq[0];
+      if (it.g != null && it.g !== GEN) { qq.shift(); it.r(false); continue; }
+      if (tokens < 1) break;
+      tokens -= 1; qq.shift(); it.r(true);
+    }
+    if ((q[0].length || q[1].length) && !timer) timer = setTimeout(pump, Math.max(60, (1 - tokens) * 60000 / perMin));
+  }
+  return { take(prio, g) { return new Promise(r => { q[prio ? 1 : 0].push({ r, g }); pump(); }); } };
+}
+const rvLimit = makeLimiter(85);
+
+/* stitch slippy-map tiles covering a Web-Mercator box */
+async function assemble(view, z, T, urlFn, opt = {}) {
+  const n = 2 ** z, mpp = WORLD / (T * n);
+  const fx0 = (view.x0 + HALF) / mpp, fx1 = (view.x1 + HALF) / mpp;
+  const fy0 = (HALF - view.y1) / mpp, fy1 = (HALF - view.y0) / mpp;
+  const ox = Math.floor(fx0), oy = Math.floor(fy0);
+  const W = Math.ceil(fx1) - ox, H = Math.ceil(fy1) - oy;
+  const cv = mkCanvas(W, H), ctx = cv.getContext('2d', { willReadFrequently: !!opt.cors });
+  const res = { canvas: cv, W, H, z, mpp, bx0: ox * mpp - HALF, by1: HALF - oy * mpp, clean: true, ok: 0, fail: 0 };
+  const tx0 = Math.floor(fx0 / T), tx1 = Math.floor((fx1 - 1e-6) / T);
+  const ty0 = Math.max(0, Math.floor(fy0 / T)), ty1 = Math.min(n - 1, Math.floor((fy1 - 1e-6) / T));
+  const jobs = [];
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+    jobs.push((async () => {
+      if (opt.limiter && !(await opt.limiter.take(opt.prio || 0, opt.gen))) { res.fail++; return; }
+      if (opt.gen != null && opt.gen !== GEN) { res.fail++; return; }
+      try {
+        const r = await loadTile(urlFn(z, ((tx % n) + n) % n, ty), !!opt.cors, opt.ms);
+        if (!r.clean) res.clean = false;
+        ctx.drawImage(r.img, tx * T - ox, ty * T - oy, T, T);
+        res.ok++;
+      } catch (e) { res.fail++; }
+    })());
+  }
+  await Promise.all(jobs);
+  return res;
+}
+function wmsURL(src, x0, y0, x1, y1, w, h, time) {
+  const p = new URLSearchParams({
+    SERVICE: 'WMS', REQUEST: 'GetMap', VERSION: '1.3.0', LAYERS: src.layer, STYLES: '', FORMAT: 'image/png', TRANSPARENT: 'TRUE',
+    CRS: 'EPSG:3857', BBOX: [x0, y0, x1, y1].map(v => v.toFixed(0)).join(','), WIDTH: String(w), HEIGHT: String(h)
+  });
+  if (time) p.set('TIME', time); else p.set('t', String(Math.floor(Date.now() / 600000)));
+  return src.wms + '?' + p.toString();
+}
+/* fetch a WMS picture for a Web-Mercator box; GIBS layers that are not published in EPSG:3857
+   are requested in EPSG:4326 and re-projected strip by strip */
+async function wmsBox(src, b, W, H, time, ms = 45000) {
+  if (!src.only4326) {
+    try {
+      const r = await loadTile(wmsURL(src, b.x0, b.y0, b.x1, b.y1, W, H, time), true, ms);
+      const c = mkCanvas(W, H); c.getContext('2d', { willReadFrequently: true }).drawImage(r.img, 0, 0, W, H);
+      return { canvas: c, W, H, mpp: (b.x1 - b.x0) / W, bx0: b.x0, by1: b.y1, clean: r.clean };
+    } catch (e) { if (src.wms !== GIBS_WMS) throw e; }
+  }
+  const lat0 = latOf(b.y0), lat1 = latOf(b.y1), lon0 = lonOf(b.x0), lon1 = lonOf(b.x1);
+  const q = new URLSearchParams({
+    SERVICE: 'WMS', REQUEST: 'GetMap', VERSION: '1.3.0', LAYERS: src.layer, STYLES: '', FORMAT: 'image/png', TRANSPARENT: 'TRUE',
+    CRS: 'EPSG:4326', BBOX: [lat0, lon0, lat1, lon1].map(v => v.toFixed(4)).join(','), WIDTH: String(W), HEIGHT: String(H)
+  });
+  if (time) q.set('TIME', time);
+  const r = await loadTile(GIBS_WMS.replace('epsg3857', 'epsg4326') + '?' + q.toString(), true, ms);
+  src.only4326 = true;
+  const c = mkCanvas(W, H), x = c.getContext('2d', { willReadFrequently: true });
+  const strips = Math.min(64, H);
+  for (let i = 0; i < strips; i++) {
+    const ya = b.y1 - (b.y1 - b.y0) * i / strips, yb = b.y1 - (b.y1 - b.y0) * (i + 1) / strips;
+    const sa = (lat1 - latOf(ya)) / (lat1 - lat0) * H, sb = (lat1 - latOf(yb)) / (lat1 - lat0) * H;
+    x.drawImage(r.img, 0, sa, W, Math.max(0.5, sb - sa), 0, H * i / strips, W, H / strips + 0.6);
+  }
+  return { canvas: c, W, H, mpp: (b.x1 - b.x0) / W, bx0: b.x0, by1: b.y1, clean: r.clean };
+}
+/* NASA GIBS serves geostationary imagery every 10 min with some latency: walk back from now to the newest slot that has pixels */
+async function latestSatTime(s, view) {
+  if (s.wms !== GIBS_WMS) return null;
+  if (s.tc && Date.now() - s.tc.at < 8 * 60000) return s.tc.t;
+  const step = 600000;
+  let t = Math.floor((Date.now() - 10 * 60000) / step) * step;
+  for (let k = 0; k < 10; k++, t -= step) {
+    const iso = new Date(t).toISOString().slice(0, 19) + 'Z';
+    try {
+      const bx = await wmsBox(s, view, 40, 40, iso, 15000);
+      if (!bx.clean) return null;
+      const d = bx.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, 40, 40).data;
+      let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      if (n > 320) { s.tc = { t: iso, at: Date.now() }; return iso; }
+    } catch (e) { /* try the previous slot */ }
+  }
+  return null;
+}
+
+/* turn a source image into phosphor light.
+   map: CARTO Dark Matter (land #0e0e0e, water #2c353c, borders ~#5c-#67) -> coastlines and borders as traces, faint sea fill
+   ir:  geostationary IR brightness -> dim green cloud haze, cold tops brightest */
+function phosphorize(box, kind) {
+  const { W, H } = box, src = box.canvas;
+  if (box.clean) {
+    try {
+      const x = src.getContext('2d', { willReadFrequently: true });
+      const id = x.getImageData(0, 0, W, H), d = id.data;
+      if (kind === 'map') {
+        const Lm = new Float32Array(W * H);
+        for (let p = 0, i = 0; p < W * H; p++, i += 4) Lm[p] = d[i + 3] ? (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255 : 0;
+        for (let y = 0; y < H; y++) {
+          for (let xx = 0; xx < W; xx++) {
+            const p = y * W + xx, i = p * 4, Lv = Lm[p];
+            let gx = 0, gy = 0;
+            if (xx > 0 && xx < W - 1) gx = Math.abs(Lm[p + 1] - Lm[p - 1]);
+            if (y > 0 && y < H - 1) gy = Math.abs(Lm[p + W] - Lm[p - W]);
+            const edge = clamp((gx + gy) * 4.2, 0, 1) * 0.8;
+            const line = clamp((Lv - 0.22) * 5, 0, 1) * 0.75;
+            const sea = Lv > 0.14 && Lv < 0.24 ? 0.07 : 0;
+            const v = Math.max(edge, line, sea);
+            d[i] = 59; d[i + 1] = 255; d[i + 2] = 111; d[i + 3] = Math.round(v * 255);
+          }
+        }
+      } else {
+        for (let i = 0; i < d.length; i += 4) {
+          const a = d[i + 3]; if (!a) continue;
+          const r = d[i], g = d[i + 1], b = d[i + 2];
+          const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+          const Lv = mx - mn > 70 ? 255 : mx;          /* colour-enhanced cold tops count as coldest */
+          const v = Math.pow(clamp((Lv - 100) / 145, 0, 1), 1.4);
+          d[i] = 34; d[i + 1] = 168; d[i + 2] = 78; d[i + 3] = Math.round(v * a * 0.85);
+        }
+      }
+      x.putImageData(id, 0, 0);
+      box.tint = false;
+      return src;
+    } catch (e) { /* tainted: fall through to blend-mode tint */ }
+  }
+  /* no pixel access (no CORS): shape the tone curve with blend modes instead */
+  const c = mkCanvas(W, H), x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, W, H);
+  x.drawImage(src, 0, 0);
+  x.globalCompositeOperation = 'multiply';
+  x.drawImage(c, 0, 0);                                   /* v^2 */
+  if (kind !== 'map') { x.drawImage(c, 0, 0); }           /* v^4: warm ground drops out, cold tops stay */
+  else { x.globalCompositeOperation = 'lighter'; x.drawImage(c, 0, 0); x.drawImage(c, 0, 0); }
+  x.globalCompositeOperation = 'multiply'; x.fillStyle = kind === 'map' ? 'rgb(150,150,150)' : 'rgb(120,120,120)'; x.fillRect(0, 0, W, H);
+  x.globalCompositeOperation = 'color'; x.fillStyle = kind === 'map' ? 'rgb(59,255,111)' : 'rgb(34,168,78)'; x.fillRect(0, 0, W, H);
+  x.globalCompositeOperation = 'destination-in'; x.drawImage(src, 0, 0);
+  box.tint = true;
+  return c;
+}
+
+/* ================= view geometry ================= */
+function makeView(lat, lon, km) {
+  lat = clamp(lat, -78, 78);
+  const X0 = mercX(lon), Y0 = mercY(lat), H = km * 1000 / Math.cos(lat * D2R);
+  return { lat, lon, km, X0, Y0, H, x0: X0 - H, x1: X0 + H, y0: Y0 - H, y1: Y0 + H };
+}
+function rvZoom(v) {
+  for (let z = 7; z >= 1; z--) { if (2 * v.H / (WORLD / (512 * 2 ** z)) <= 1.6 * 512) return z; }
+  return 1;
+}
+
+/* ================= scope canvas ================= */
+const SC = { cv: $('#scope'), ctx: null, PX: 0, C: 0, RR: 0, s: 1 };
+SC.ctx = SC.cv.getContext('2d');
+const L = {};
+function resizeScope() {
+  const r = SC.cv.getBoundingClientRect();
+  const css = Math.max(220, Math.round(r.width));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const PX = Math.min(1400, Math.round(css * dpr));
+  if (PX === SC.PX) return false;
+  SC.PX = PX; SC.s = PX / css; SC.C = PX / 2; SC.RR = SC.C - 31 * SC.s;
+  SC.cv.width = PX; SC.cv.height = PX;
+  for (const k of ['base', 'echo', 'tmp', 'stat', 'mask', 'beam']) L[k] = mkCanvas(PX, PX);
+  buildMask(); buildBeam(); buildStatic();
+  return true;
+}
+function buildMask() {
+  const { PX, C } = SC, x = L.mask.getContext('2d');
+  const id = x.createImageData(PX, PX), u = new Uint32Array(id.data.buffer);
+  const FLOOR = 0.3, DECAY = 2.3;
+  for (let y = 0; y < PX; y++) {
+    const dy = y + 0.5 - C;
+    for (let xx = 0; xx < PX; xx++) {
+      let a = -Math.atan2(dy, xx + 0.5 - C); if (a < 0) a += TAU;          /* radians since the beam passed */
+      const al = FLOOR + (1 - FLOOR) * Math.exp(-a / DECAY);
+      u[y * PX + xx] = ((Math.round(al * 255) << 24) >>> 0);
+    }
+  }
+  x.putImageData(id, 0, 0);
+}
+function buildBeam() {
+  const { PX, C, RR } = SC, x = L.beam.getContext('2d');
+  const id = x.createImageData(PX, PX), u = new Uint32Array(id.data.buffer);
+  for (let y = 0; y < PX; y++) {
+    const dy = y + 0.5 - C;
+    for (let xx = 0; xx < PX; xx++) {
+      const dx = xx + 0.5 - C, r = Math.hypot(dx, dy);
+      if (r > RR) continue;
+      let a = -Math.atan2(dy, dx); if (a < 0) a += TAU;
+      if (a > 1.0) continue;
+      const al = 0.5 * Math.exp(-a / 0.17) * (0.3 + 0.7 * r / RR);
+      u[y * PX + xx] = ((((al * 255) | 0) << 24) | (111 << 16) | (255 << 8) | 59) >>> 0;
+    }
+  }
+  x.putImageData(id, 0, 0);
+  x.save(); x.translate(C, C);
+  x.strokeStyle = 'rgba(214,255,224,.95)'; x.lineWidth = 1.6 * SC.s; x.shadowColor = '#3bff6f'; x.shadowBlur = 12 * SC.s;
+  x.beginPath(); x.moveTo(0, 0); x.lineTo(RR, 0); x.stroke();
+  x.restore();
+}
+function buildStatic() {
+  const { PX, C, RR, s } = SC, x = L.stat.getContext('2d');
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, PX, PX);
+  x.save(); x.translate(C, C);
+  x.lineWidth = Math.max(1, s * 0.8);
+  x.strokeStyle = 'rgba(59,255,111,.26)';
+  for (let i = 1; i < 4; i++) { x.beginPath(); x.arc(0, 0, RR * i / 4, 0, TAU); x.stroke(); }
+  x.strokeStyle = 'rgba(59,255,111,.2)';
+  x.beginPath();
+  for (let d = 0; d < 360; d += 30) { const a = (d - 90) * D2R; x.moveTo(Math.cos(a) * RR * 0.06, Math.sin(a) * RR * 0.06); x.lineTo(Math.cos(a) * RR, Math.sin(a) * RR); }
+  x.stroke();
+  x.save(); x.shadowColor = 'rgba(59,255,111,.9)'; x.shadowBlur = 12 * s; x.lineWidth = 2 * s; x.strokeStyle = '#3bff6f';
+  x.beginPath(); x.arc(0, 0, RR, 0, TAU); x.stroke(); x.restore();
+  x.strokeStyle = '#2e9e50'; x.lineWidth = Math.max(1, s * 0.9);
+  x.beginPath();
+  for (let d = 0; d < 360; d += 2) {
+    const a = (d - 90) * D2R, len = (d % 30 === 0 ? 9 : d % 10 === 0 ? 6 : 3) * s;
+    x.moveTo(Math.cos(a) * (RR + 2 * s), Math.sin(a) * (RR + 2 * s)); x.lineTo(Math.cos(a) * (RR + 2 * s + len), Math.sin(a) * (RR + 2 * s + len));
+  }
+  x.stroke();
+  x.font = `${Math.round(10.5 * s)}px "Share Tech Mono", ui-monospace, monospace`;
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (let d = 0; d < 360; d += 30) {
+    const a = (d - 90) * D2R;
+    x.fillStyle = d === 0 ? '#c6ffd4' : '#2e9e50';
+    x.fillText(String(d).padStart(3, '0'), Math.cos(a) * (RR + 21 * s), Math.sin(a) * (RR + 21 * s));
+  }
+  if (VIEW) {
+    x.fillStyle = 'rgba(59,255,111,.75)'; x.textAlign = 'left';
+    const a = (52 - 90) * D2R;
+    for (let i = 1; i <= 4; i++) {
+      const r = RR * i / 4;
+      x.fillText(fmtRing(VIEW.km * i / 4), Math.cos(a) * r + 3 * s, Math.sin(a) * r - 7 * s);
+    }
+  }
+  x.strokeStyle = '#c6ffd4'; x.lineWidth = 1.2 * s;
+  x.beginPath(); x.moveTo(-7 * s, 0); x.lineTo(-2.5 * s, 0); x.moveTo(2.5 * s, 0); x.lineTo(7 * s, 0); x.moveTo(0, -7 * s); x.lineTo(0, -2.5 * s); x.moveTo(0, 2.5 * s); x.lineTo(0, 7 * s); x.stroke();
+  x.restore();
+}
+function boxRect(box) {
+  const k = SC.RR / VIEW.H;
+  return [SC.C + (box.bx0 - VIEW.X0) * k, SC.C - (box.by1 - VIEW.Y0) * k, box.W * box.mpp * k, box.H * box.mpp * k];
+}
+function drawBox(x, box, canvas, alpha, op) {
+  const r = boxRect(box);
+  x.save(); x.globalAlpha = alpha; x.globalCompositeOperation = op || 'source-over';
+  x.imageSmoothingEnabled = true; if ('imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
+  x.drawImage(canvas || box.canvas, r[0], r[1], r[2], r[3]);
+  x.restore();
+}
+let hatch = null;
+function hatchPattern(x) {
+  if (!hatch) {
+    hatch = mkCanvas(8, 8); const h = hatch.getContext('2d');
+    h.strokeStyle = 'rgba(255,194,61,.75)'; h.lineWidth = 1;
+    h.beginPath(); h.moveTo(0, 8); h.lineTo(8, 0); h.moveTo(-2, 2); h.lineTo(2, -2); h.moveTo(6, 10); h.lineTo(10, 6); h.stroke();
+  }
+  return x.createPattern(hatch, 'repeat');
+}
+function composeBase() {
+  if (!VIEW || !SC.PX) return;
+  const { PX, C, RR, s } = SC, x = L.base.getContext('2d');
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  x.clearRect(0, 0, PX, PX);
+  x.save(); x.beginPath(); x.arc(C, C, RR, 0, TAU); x.clip();
+  const g = x.createRadialGradient(C, C, RR * 0.05, C, C, RR);
+  g.addColorStop(0, '#03190a'); g.addColorStop(0.75, '#010d05'); g.addColorStop(1, '#000702');
+  x.fillStyle = g; x.fillRect(0, 0, PX, PX);
+  if (UI.layers.sat && SAT.box) drawBox(x, SAT.box, null, 0.75, 'lighter');
+  if (UI.layers.map && MAP.box) drawBox(x, MAP.box, null, MAP.box.tint ? 0.9 : 1, 'lighter');
+  if (UI.layers.gpm && GPMX.box) drawBox(x, GPMX.box, null, 0.6, 'source-over');
+  if (UI.layers.cov && COV.box) {
+    const t = mkCanvas(PX, PX), tx = t.getContext('2d');
+    drawBox(tx, COV.box, null, 1, 'source-over');
+    tx.globalCompositeOperation = 'source-in'; tx.fillStyle = hatchPattern(tx); tx.fillRect(0, 0, PX, PX);
+    x.globalAlpha = 0.45; x.drawImage(t, 0, 0); x.globalAlpha = 1;
+  }
+  if (UI.layers.map) {
+    const k = RR / VIEW.H;
+    x.font = `${Math.round(10 * s)}px "Share Tech Mono", ui-monospace, monospace`; x.textBaseline = 'middle';
+    for (const p of ALL_PLACES) {
+      const px = C + (mercX(p[2]) - VIEW.X0) * k, py = C - (mercY(p[1]) - VIEW.Y0) * k;
+      if (Math.hypot(px - C, py - C) > RR - 12 * s || Math.hypot(px - C, py - C) < 10 * s) continue;
+      x.fillStyle = 'rgba(198,255,212,.85)'; x.fillRect(px - 1.5 * s, py - 1.5 * s, 3 * s, 3 * s);
+      x.fillStyle = 'rgba(59,255,111,.7)'; x.fillText(p[0].split(' · ').pop().toUpperCase(), px + 5 * s, py);
+    }
+  }
+  x.restore();
+}
+function curEntry() { const f = RV.frames[RV.idx]; return f ? RV.data.get(f.time) : null; }
+function liveEntry() { const f = RV.frames[RV.frames.length - 1]; return f ? RV.data.get(f.time) : null; }
+let echoFor = null;
+function buildEcho() {
+  if (!SC.PX) return;
+  const x = L.echo.getContext('2d');
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, SC.PX, SC.PX);
+  const e = curEntry(); echoFor = e;
+  if (!e || !VIEW) return;
+  let c;
+  if (e.grid) {
+    const { W, H } = e.box; c = mkCanvas(W, H);
+    const cx = c.getContext('2d'), id = cx.createImageData(W, H), u = new Uint32Array(id.data.buffer), g = e.grid;
+    for (let i = 0; i < g.length; i++) u[i] = PLUT[g[i] + 128];
+    cx.putImageData(id, 0, 0);
+  } else if (e.box.canvas) {
+    c = mkCanvas(e.box.W, e.box.H); const cx = c.getContext('2d');
+    cx.drawImage(e.box.canvas, 0, 0); cx.globalCompositeOperation = 'source-in'; cx.fillStyle = 'rgba(59,255,111,.85)'; cx.fillRect(0, 0, c.width, c.height);
+  } else return;
+  x.save(); x.beginPath(); x.arc(SC.C, SC.C, SC.RR, 0, TAU); x.clip();
+  drawBox(x, e.box, c, 1, 'source-over');
+  x.restore();
+}
+function drawOverlay(x, beam) {
+  const { C, s } = SC, k = SC.RR / VIEW.H;
+  const e = curEntry();
+  x.save();
+  x.beginPath(); x.arc(C, C, SC.RR, 0, TAU); x.clip();
+  x.font = `${Math.round(10 * s)}px "Share Tech Mono", ui-monospace, monospace`; x.textBaseline = 'middle';
+  if (UI.layers.cells && e && e.cells) {
+    const cells = e.cells.slice(0, 12);
+    cells.forEach((c, i) => {
+      const px = C + (mercX(c.lon) - VIEW.X0) * k, py = C - (mercY(c.lat) - VIEW.Y0) * k;
+      const since = ((((beam - c.b) % 360) + 360) % 360) * D2R;
+      const al = UI.reduce ? 0.95 : Math.max(0.3, Math.exp(-since / 2.4));
+      const threat = c === THREAT, sev = c.max >= 50;
+      const col = threat ? '255,194,61' : sev ? '255,75,58' : c.max >= 40 ? '198,255,212' : '59,255,111';
+      const r = clamp(Math.sqrt(c.area / Math.PI) * 1000 / Math.cos(VIEW.lat * D2R) * k, 5 * s, 34 * s) + 4 * s;
+      const q = r * 0.45;
+      x.strokeStyle = `rgba(${col},${al})`; x.lineWidth = (threat ? 1.6 : 1.1) * s;
+      x.beginPath();
+      x.moveTo(px - r, py - r + q); x.lineTo(px - r, py - r); x.lineTo(px - r + q, py - r);
+      x.moveTo(px + r - q, py - r); x.lineTo(px + r, py - r); x.lineTo(px + r, py - r + q);
+      x.moveTo(px + r, py + r - q); x.lineTo(px + r, py + r); x.lineTo(px + r - q, py + r);
+      x.moveTo(px - r + q, py + r); x.lineTo(px - r, py + r); x.lineTo(px - r, py + r - q);
+      x.stroke();
+      if (c.spd != null && c.spd >= 3) {
+        const len = c.spd * 0.5 * 1000 / Math.cos(VIEW.lat * D2R) * k;       /* 30-minute travel */
+        const hx = Math.sin(c.hdg * D2R), hy = -Math.cos(c.hdg * D2R);
+        const ex = px + hx * len, ey = py + hy * len;
+        x.beginPath(); x.moveTo(px, py); x.lineTo(ex, ey);
+        x.moveTo(ex, ey); x.lineTo(ex - hx * 5 * s - hy * 3 * s, ey - hy * 5 * s + hx * 3 * s);
+        x.moveTo(ex, ey); x.lineTo(ex - hx * 5 * s + hy * 3 * s, ey - hy * 5 * s - hx * 3 * s);
+        x.stroke();
+      }
+      if (al > 0.42 || threat) {
+        x.fillStyle = `rgba(${col},${Math.max(al, threat ? 0.9 : 0)})`;
+        x.fillText(`C${pad(i + 1)} ${c.max}`, px + r + 4 * s, py - r + 5 * s);
+      }
+    });
+    if (THREAT && e === liveEntry()) {
+      const px = C + (mercX(THREAT.lon) - VIEW.X0) * k, py = C - (mercY(THREAT.lat) - VIEW.Y0) * k;
+      x.setLineDash([4 * s, 4 * s]); x.strokeStyle = 'rgba(255,194,61,.7)'; x.lineWidth = 1 * s;
+      x.beginPath(); x.moveTo(C, C); x.lineTo(px, py); x.stroke(); x.setLineDash([]);
+    }
+  }
+  if (PROBE) {
+    const px = C + (mercX(PROBE.lon) - VIEW.X0) * k, py = C - (mercY(PROBE.lat) - VIEW.Y0) * k;
+    x.strokeStyle = '#c6ffd4'; x.lineWidth = 1.2 * s;
+    x.beginPath(); x.moveTo(px, py - 7 * s); x.lineTo(px + 7 * s, py); x.lineTo(px, py + 7 * s); x.lineTo(px - 7 * s, py); x.closePath(); x.stroke();
+  }
+  x.restore();
+}
+let lastRO = 0, painting = false;
+function paint(t) {
+  if (document.hidden) { painting = false; return; }
+  painting = true;
+  if (VIEW && SC.PX) {
+    const { ctx, PX, C } = SC;
+    const beam = UI.reduce ? 45 : ((t / 1000 / SWEEP_S) % 1) * 360;
+    const ca = (beam - 90) * D2R;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, PX, PX);
+    ctx.drawImage(L.base, 0, 0);
+    if (UI.layers.radar) {
+      if (UI.reduce) ctx.drawImage(L.echo, 0, 0);
+      else {
+        const tx = L.tmp.getContext('2d');
+        tx.setTransform(1, 0, 0, 1, 0, 0); tx.globalCompositeOperation = 'copy'; tx.drawImage(L.echo, 0, 0);
+        tx.globalCompositeOperation = 'destination-in'; tx.translate(C, C); tx.rotate(ca); tx.drawImage(L.mask, -C, -C);
+        tx.setTransform(1, 0, 0, 1, 0, 0); tx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(L.tmp, 0, 0);
+      }
+    }
+    if (!UI.reduce) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(C, C); ctx.rotate(ca); ctx.drawImage(L.beam, -C, -C); ctx.restore(); }
+    drawOverlay(ctx, beam);
+    ctx.drawImage(L.stat, 0, 0);
+    if (t - lastRO > 120) { lastRO = t; $('#roBeam').textContent = beam.toFixed(1).padStart(5, '0') + '°'; }
+  }
+  requestAnimationFrame(paint);
+}
+
+/* ================= radar data ================= */
+function decodeBox(box) {
+  const { W, H } = box;
+  const d = box.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+  const g = new Int8Array(W * H).fill(-128);
+  let lastKey = -1, lastV = -128;
+  for (let p = 0, i = 0; p < W * H; p++, i += 4) {
+    const a = d[i + 3]; if (a < 10) continue;
+    const key = ((d[i] << 24) | (d[i + 1] << 16) | (d[i + 2] << 8) | a) >>> 0;
+    if (key !== lastKey) { lastKey = key; lastV = ubDecode(d[i], d[i + 1], d[i + 2], a, key); }
+    g[p] = lastV;
+  }
+  return g;
+}
+function analyse(e) {
+  const { box, grid } = e, { W, H, mpp, bx0, by1 } = box;
+  const cpx = (VIEW.X0 - bx0) / mpp, cpy = (by1 - VIEW.Y0) / mpp, rpx = VIEW.H / mpp;
+  let cv = -128;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const xx = Math.floor(cpx) + dx, yy = Math.floor(cpy) + dy;
+    if (xx >= 0 && yy >= 0 && xx < W && yy < H) cv = Math.max(cv, grid[yy * W + xx]);
+  }
+  let best = Infinity, bxp = 0, byp = 0, bv = -128, inC = 0, wet = 0, vmax = -128;
+  const r2 = rpx * rpx;
+  for (let y = 0; y < H; y++) {
+    const dy = y + 0.5 - cpy, row = y * W;
+    for (let xx = 0; xx < W; xx++) {
+      const dx = xx + 0.5 - cpx, d2 = dx * dx + dy * dy;
+      if (d2 > r2) continue;
+      inC++;
+      const v = grid[row + xx];
+      if (v < 15) continue;
+      wet++; if (v > vmax) vmax = v;
+      if (d2 < best) { best = d2; bxp = xx; byp = y; bv = v; }
+    }
+  }
+  e.center = cv; e.cover = inC ? wet / inC : 0; e.vmax = vmax;
+  if (best < Infinity) {
+    const la = latOf(by1 - (byp + 0.5) * mpp), lo = lonOf(bx0 + (bxp + 0.5) * mpp);
+    e.nearest = { d: hav(VIEW.lat, VIEW.lon, la, lo), b: brg(VIEW.lat, VIEW.lon, la, lo), v: bv };
+  } else e.nearest = null;
+  e.cells = detectCells(e);
+}
+function detectCells(e) {
+  const { box, grid } = e, { W, H, mpp, bx0, by1 } = box;
+  const f = Math.max(1, Math.ceil(Math.max(W, H) / 240));
+  const gw = Math.ceil(W / f), gh = Math.ceil(H / f);
+  const g = new Int8Array(gw * gh).fill(-128);
+  for (let y = 0; y < H; y++) {
+    const gy = ((y / f) | 0) * gw, row = y * W;
+    for (let xx = 0; xx < W; xx++) { const v = grid[row + xx], gi = gy + ((xx / f) | 0); if (v > g[gi]) g[gi] = v; }
+  }
+  const THR = 30, seen = new Uint8Array(gw * gh), stack = new Int32Array(gw * gh), cells = [];
+  const kmc = f * mpp * Math.cos(VIEW.lat * D2R) / 1000;
+  for (let i = 0; i < gw * gh; i++) {
+    if (seen[i] || g[i] < THR) continue;
+    let sp = 0; stack[sp++] = i; seen[i] = 1;
+    let n = 0, sw = 0, sx = 0, sy = 0, mx = -128;
+    while (sp) {
+      const p = stack[--sp], px = p % gw, py = (p / gw) | 0, v = g[p], w = v - THR + 1;
+      n++; sw += w; sx += w * px; sy += w * py; if (v > mx) mx = v;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = py + dy; if (ny < 0 || ny >= gh) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = px + dx; if (nx < 0 || nx >= gw) continue;
+          const q = ny * gw + nx;
+          if (!seen[q] && g[q] >= THR) { seen[q] = 1; stack[sp++] = q; }
+        }
+      }
+    }
+    const area = n * kmc * kmc;
+    if (area < 6) continue;
+    const X = bx0 + (sx / sw + 0.5) * f * mpp, Y = by1 - (sy / sw + 0.5) * f * mpp;
+    const lat = latOf(Y), lon = lonOf(X), d = hav(VIEW.lat, VIEW.lon, lat, lon);
+    if (d > VIEW.km) continue;
+    cells.push({ lat, lon, d, b: brg(VIEW.lat, VIEW.lon, lat, lon), max: mx, area, ve: null, vn: null, spd: null, hdg: null, eta: null, est: false });
+  }
+  cells.sort((a, b) => a.d - b.d);
+  return cells.slice(0, 30);
+}
+const enOf = c => [(c.lon - VIEW.lon) * Math.cos(VIEW.lat * D2R) * 111.32, (c.lat - VIEW.lat) * 110.57];
+function track(cur, prev, dtMin) {
+  const used = new Set(), vel = [];
+  for (const c of cur) {
+    const [e, n] = enOf(c); let best = -1, bd = Infinity;
+    for (let j = 0; j < prev.length; j++) {
+      if (used.has(j)) continue;
+      const p = prev[j], [pe, pn] = enOf(p), d = Math.hypot(e - pe, n - pn), ar = Math.abs(Math.log(c.area / p.area));
+      if (d < Math.max(8, 22 * dtMin / 10) && ar < 1.6 && d + ar * 4 < bd) { bd = d + ar * 4; best = j; }
+    }
+    if (best >= 0) {
+      const p = prev[best], [pe, pn] = enOf(p), ve = (e - pe) / (dtMin / 60), vn = (n - pn) / (dtMin / 60);
+      if (Math.hypot(ve, vn) <= 130) { used.add(best); c.ve = ve; c.vn = vn; vel.push([ve, vn]); }
+    }
+  }
+  if (vel.length) {
+    const med = a => { const s = a.slice().sort((p, q) => p - q); return s[s.length >> 1]; };
+    const me = med(vel.map(v => v[0])), mn = med(vel.map(v => v[1]));
+    for (const c of cur) if (c.ve == null) { c.ve = me; c.vn = mn; c.est = true; }
+  }
+  for (const c of cur) etaFor(c);
+}
+function etaFor(c) {
+  c.eta = null; c.spd = null;
+  if (c.ve == null) return;
+  const [e, n] = enOf(c), sp = Math.hypot(c.ve, c.vn);
+  c.spd = sp; c.hdg = (Math.atan2(c.ve, c.vn) * R2D + 360) % 360;
+  const rc = Math.sqrt(c.area / Math.PI) + 3, dist = Math.hypot(e, n);
+  if (dist <= rc) { c.eta = 0; return; }
+  if (sp < 3) return;
+  const ux = c.ve / sp, uy = c.vn / sp, along = -(e * ux + n * uy), cross = Math.abs(e * uy - n * ux);
+  if (along <= 0 || cross > rc) return;
+  c.eta = Math.max(0, (along - Math.sqrt(rc * rc - cross * cross)) / sp * 60);
+}
+function linkMotion() {
+  const es = [...RV.data.values()].filter(e => e.cells).sort((a, b) => a.time - b.time);
+  for (let i = 0; i < es.length; i++) {
+    const e = es[i], p = es[i - 1];
+    for (const c of e.cells) { c.ve = c.vn = c.spd = c.hdg = c.eta = null; c.est = false; }
+    if (p && p.cells && e.time - p.time <= 1800) track(e.cells, p.cells, (e.time - p.time) / 60);
+  }
+  computeThreat();
+}
+function computeThreat() {
+  const e = liveEntry(); THREAT = null;
+  if (!e || !e.cells) return;
+  let best = null;
+  for (const c of e.cells) if (c.eta != null && c.eta <= 180 && (!best || c.eta < best.eta)) best = c;
+  THREAT = best;
+}
+async function loadFrame(f, prio, g) {
+  if (RV.data.has(f.time)) return RV.data.get(f.time);
+  if (RV.pending.has(f.time)) return RV.pending.get(f.time);
+  const p = (async () => {
+    const box = await assemble(VIEW, RV.z, 512, (z, x, y) => `${RV.host}${f.path}/512/${z}/${x}/${y}/2/1_0.png`, { cors: true, limiter: rvLimit, prio, gen: g });
+    if (g !== GEN || !box.ok) { if (g === GEN) RV.fail++; return null; }
+    const e = { time: f.time, box, grid: null, cells: null };
+    if (box.clean) { try { e.grid = decodeBox(box); } catch (err) { e.grid = null; } }
+    if (e.grid) { analyse(e); box.canvas = null; }
+    RV.data.set(f.time, e);
+    return e;
+  })();
+  RV.pending.set(f.time, p);
+  try { return await p; } finally { RV.pending.delete(f.time); }
+}
+async function loadFramesForView(g) {
+  const fr = RV.frames.slice(); if (!fr.length) return;
+  const last = fr.length - 1;
+  await loadFrame(fr[last], 0, g); if (g !== GEN) return;
+  if (UI.mode === 'live') RV.idx = RV.frames.length - 1;
+  linkMotion(); onFrame(); setRadarSource();
+  if (fr[last - 1]) { await loadFrame(fr[last - 1], 0, g); if (g !== GEN) return; linkMotion(); onFrame(); }
+  for (let i = last - 2; i >= 0; i--) { await loadFrame(fr[i], 1, g); if (g !== GEN) return; renderTimeline(); }
+  linkMotion(); renderTimeline();
+}
+async function refreshRadar() {
+  RV.lastCheck = Date.now();
+  try {
+    if (!(await rvLimit.take(0, null))) return;
+    const j = await fetchJSON(RV_API + '?t=' + Math.floor(Date.now() / 60000));
+    const past = (j.radar && j.radar.past) || [];
+    if (!past.length) throw new Error('no frames');
+    RV.host = j.host || 'https://tilecache.rainviewer.com';
+    const newest = past[past.length - 1].time, prevNewest = RV.frames.length ? RV.frames[RV.frames.length - 1].time : 0;
+    RV.frames = past.map(p => ({ time: p.time, path: p.path }));
+    const keep = new Set(RV.frames.map(f => f.time));
+    for (const k of [...RV.data.keys()]) if (!keep.has(k)) RV.data.delete(k);
+    if (UI.mode === 'live' || RV.idx >= RV.frames.length || RV.idx < 0) RV.idx = RV.frames.length - 1;
+    if (newest !== prevNewest) {
+      RV.lastNew = Date.now();
+      if (!COV.box) loadCoverage(GEN);
+      loadFramesForView(GEN);
+      loadWorldRadar();
+    }
+    setRadarSource();
+    renderTimeline();
+    if (OFFLINE) checkOffline();
+  } catch (e) {
+    setSource('radar', RV.frames.length ? 'warn' : 'down', RV.frames.length ? 'RADAR STALE' : 'RADAR OFFLINE');
+    checkOffline();
+  }
+}
+async function loadCoverage(g) {
+  if (!RV.host) return;
+  const box = await assemble(VIEW, RV.z, 512, (z, x, y) => `${RV.host}/v2/coverage/0/512/${z}/${x}/${y}/0/0_0.png`, { cors: true, limiter: rvLimit, prio: 1, gen: g });
+  if (g !== GEN || !box.ok) return;
+  COV.covered = null;
+  if (box.clean) {
+    try {
+      const px = Math.floor((VIEW.X0 - box.bx0) / box.mpp), py = Math.floor((box.by1 - VIEW.Y0) / box.mpp);
+      const a = box.canvas.getContext('2d', { willReadFrequently: true }).getImageData(px, py, 1, 1).data[3];
+      COV.covered = a < 30;
+    } catch (e) { COV.covered = null; }
+  }
+  COV.box = box;
+  composeBase(); renderStatus();
+}
+function setRadarSource() {
+  const f = RV.frames[RV.frames.length - 1];
+  if (!f) return;
+  const age = Math.round((Date.now() / 1000 - f.time) / 60);
+  const e = liveEntry();
+  const st = !e ? 'warn' : age > 40 ? 'warn' : 'ok';
+  setSource('radar', st, `RADAR ${fmtT(f.time * 1000)} (−${age}′)${e && !e.grid ? ' · NO PIXEL ACCESS' : ''}`);
+}
+
+/* ================= map, satellites ================= */
+async function loadMap(g) {
+  let z = Math.round(Math.log2(SC.PX * WORLD / (2 * VIEW.H * 512)));
+  z = clamp(z, 1, 11);
+  const box = await assemble(VIEW, z, 512, cartoURL, { cors: true, gen: g });
+  if (g !== GEN) return;
+  if (!box.ok) { setSource('map', 'down', 'MAP OFFLINE'); return; }
+  box.canvas = phosphorize(box, 'map');
+  MAP.box = box; setSource('map', box.fail ? 'warn' : 'ok', `MAP z${z}`);
+  composeBase();
+}
+function satElev(s, lat, lon) {
+  const dl = (lon - s.lon) * D2R, cpsi = Math.cos(lat * D2R) * Math.cos(dl);
+  return Math.atan2(cpsi - 0.15127, Math.sqrt(Math.max(0, 1 - cpsi * cpsi))) * R2D;
+}
+function pickSat() {
+  if (UI.sat !== 'auto') { const s = SATS.find(q => q.id === UI.sat); if (s) return s; }
+  let best = null, be = 5;
+  for (const s of SATS) { const el = satElev(s, VIEW.lat, VIEW.lon); if (el > be) { be = el; best = s; } }
+  return best;
+}
+async function loadSat(g) {
+  const s = pickSat(); SAT.cur = s; SAT.time = null;
+  if (!s) { SAT.box = null; setSource('sat', 'warn', 'SAT NONE IN VIEW'); composeBase(); renderSats(); renderHUD(); return; }
+  const N = clamp(Math.round(SC.PX * 0.8), 384, 1024);
+  try {
+    const time = await latestSatTime(s, VIEW);
+    if (g !== GEN) return;
+    const box = await wmsBox(s, VIEW, N, N, time);
+    if (g !== GEN) return;
+    SAT.time = time;
+    box.canvas = phosphorize(box, 'ir');
+    SAT.box = box; SAT.t = Date.now(); s.status = 'ok';
+    setSource('sat', 'ok', `SAT ${s.name}${time ? ' ' + fmtT(Date.parse(time)) : ''}`);
+  } catch (e) {
+    if (g !== GEN) return;
+    s.status = 'down'; setSource('sat', 'down', `SAT ${s.name} OFFLINE`);
+  }
+  composeBase(); renderSats(); renderHUD();
+}
+async function loadGpm(g) {
+  if (!UI.layers.gpm) { GPMX.box = null; composeBase(); return; }
+  const N = clamp(Math.round(SC.PX * 0.6), 320, 900);
+  try {
+    const box = await wmsBox(GPM, VIEW, N, N, null);
+    if (g !== GEN) return;
+    GPMX.box = box;
+    GPM.status = 'ok';
+  } catch (e) { if (g === GEN) GPM.status = 'down'; }
+  composeBase(); renderSats();
+}
+
+/* ================= world inset ================= */
+const WD = { cv: $('#world'), base: null, ir: null, rad: null, W: 0, H: 0 };
+const WLAT1 = 75, WLAT0 = -60;
+const WVIEW = { x0: -HALF, x1: HALF, y0: mercY(WLAT0), y1: mercY(WLAT1) };
+function worldXY(lat, lon) {
+  return [(lon + 180) / 360 * WD.W, (WVIEW.y1 - mercY(lat)) / (WVIEW.y1 - WVIEW.y0) * WD.H];
+}
+function sizeWorld() {
+  const r = WD.cv.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = Math.max(200, Math.round(r.width * dpr)), H = Math.max(100, Math.round(r.height * dpr));
+  if (W !== WD.W || H !== WD.H) { WD.W = W; WD.H = H; WD.cv.width = W; WD.cv.height = H; WD.s = W / Math.max(1, r.width); drawWorld(); }
+}
+function boxToWorld(x, box, canvas, alpha, op) {
+  const sx = WD.W / WORLD, sy = WD.H / (WVIEW.y1 - WVIEW.y0);
+  x.save(); x.globalAlpha = alpha; x.globalCompositeOperation = op || 'source-over';
+  x.drawImage(canvas || box.canvas, (box.bx0 + HALF) * sx, (WVIEW.y1 - box.by1) * sy, box.W * box.mpp * sx, box.H * box.mpp * sy);
+  x.restore();
+}
+async function loadWorldBase() {
+  const box = await assemble(WVIEW, 1, 512, cartoURL, { cors: true });
+  if (!box.ok) return;
+  box.canvas = phosphorize(box, 'map'); WD.base = box; drawWorld();
+}
+async function loadWorldIR() {
+  WD.irt = Date.now();
+  const N = clamp(Math.round((WD.W || 600) / 128) * 128, 512, 1024), h = Math.round(N * (WVIEW.y1 - WVIEW.y0) / WORLD);
+  const acc = mkCanvas(N, h), ax = acc.getContext('2d');
+  let any = false;
+  await Promise.all(SATS.map(async s => {
+    try {
+      const bx = await wmsBox(s, WVIEW, N, h, null, 60000);
+      const ph = phosphorize(bx, 'ir');
+      ax.globalCompositeOperation = 'lighten'; ax.drawImage(ph, 0, 0); any = true;
+      if (s.status === 'wait') s.status = 'ok';
+    } catch (e) { s.status = 'down'; }
+  }));
+  if (any) { WD.ir = { canvas: acc, W: N, H: h, mpp: WORLD / N, bx0: -HALF, by1: WVIEW.y1 }; drawWorld(); }
+  renderSats();
+}
+async function loadWorldRadar() {
+  const f = RV.frames[RV.frames.length - 1]; if (!f || !RV.host) return;
+  const box = await assemble(WVIEW, 1, 512, (z, x, y) => `${RV.host}${f.path}/512/${z}/${x}/${y}/2/1_0.png`, { cors: true, limiter: rvLimit, prio: 1 });
+  if (!box.ok) return;
+  let c = box.canvas;
+  if (box.clean) {
+    try {
+      const g = decodeBox(box); c = mkCanvas(box.W, box.H);
+      const cx = c.getContext('2d'), id = cx.createImageData(box.W, box.H), u = new Uint32Array(id.data.buffer);
+      for (let i = 0; i < g.length; i++) u[i] = g[i] >= 15 ? PLUT[Math.max(g[i], 30) + 128] : 0;
+      cx.putImageData(id, 0, 0);
+    } catch (e) { c = box.canvas; }
+  }
+  WD.rad = { ...box, canvas: c }; drawWorld();
+}
+function drawWorld() {
+  if (!WD.W) return;
+  const x = WD.cv.getContext('2d'), { W, H } = WD, s = WD.s || 1;
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  x.fillStyle = '#000a03'; x.fillRect(0, 0, W, H);
+  if (WD.ir) boxToWorld(x, WD.ir, null, 0.8, 'lighter');
+  if (WD.base) boxToWorld(x, WD.base, null, 1, 'lighter');
+  if (WD.rad) boxToWorld(x, WD.rad, null, 1, 'lighter');
+  x.strokeStyle = 'rgba(59,255,111,.18)'; x.lineWidth = 1;
+  x.beginPath();
+  for (let lo = -150; lo <= 150; lo += 30) { const [px] = worldXY(0, lo); x.moveTo(px, 0); x.lineTo(px, H); }
+  for (const la of [-30, 0, 30, 60]) { const [, py] = worldXY(la, 0); x.moveTo(0, py); x.lineTo(W, py); }
+  x.stroke();
+  x.font = `${Math.round(9.5 * s)}px "Share Tech Mono", ui-monospace, monospace`; x.textBaseline = 'top';
+  const active = SAT.cur;
+  for (const sat of SATS) {
+    x.strokeStyle = sat === active ? 'rgba(255,194,61,.75)' : 'rgba(255,194,61,.28)'; x.lineWidth = (sat === active ? 1.3 : 1) * s;
+    x.setLineDash(sat === active ? [] : [3 * s, 3 * s]);
+    x.beginPath(); let prev = null;
+    for (let b = 0; b <= 360; b += 4) {
+      const [la, lo] = destPt(0, sat.lon, b, 70 * D2R); const p = worldXY(clamp(la, WLAT0, WLAT1), lo);
+      if (!prev || Math.abs(p[0] - prev[0]) > W / 2) x.moveTo(p[0], p[1]); else x.lineTo(p[0], p[1]);
+      prev = p;
+    }
+    x.stroke(); x.setLineDash([]);
+    const [px, py] = worldXY(0, sat.lon);
+    x.fillStyle = '#ffc23d';
+    x.beginPath(); x.moveTo(px, py - 4 * s); x.lineTo(px + 4 * s, py + 3 * s); x.lineTo(px - 4 * s, py + 3 * s); x.closePath(); x.fill();
+    x.fillText(sat.id, px + 5 * s, py + 2 * s);
+  }
+  if (VIEW) {
+    const [px, py] = worldXY(VIEW.lat, VIEW.lon);
+    x.strokeStyle = '#c6ffd4'; x.lineWidth = 1.2 * s;
+    x.beginPath(); x.moveTo(px - 9 * s, py); x.lineTo(px + 9 * s, py); x.moveTo(px, py - 9 * s); x.lineTo(px, py + 9 * s); x.stroke();
+    const rr = Math.max(3 * s, (VIEW.H * 2) * (W / WORLD) / 2);
+    x.beginPath(); x.arc(px, py, rr, 0, TAU); x.stroke();
+  }
+}
+WD.cv.addEventListener('click', ev => {
+  const r = WD.cv.getBoundingClientRect();
+  const fx = (ev.clientX - r.left) / r.width, fy = (ev.clientY - r.top) / r.height;
+  const lon = fx * 360 - 180, lat = latOf(WVIEW.y1 - fy * (WVIEW.y1 - WVIEW.y0));
+  setLocation({ lat: clamp(lat, -75, 75), lon, name: null });
+});
+
+/* ================= Open-Meteo ================= */
+const locKey = () => LOC.lat.toFixed(3) + ',' + LOC.lon.toFixed(3);
+async function loadForecast() {
+  const key = locKey();
+  const base = `${OM_API}?latitude=${LOC.lat.toFixed(4)}&longitude=${LOC.lon.toFixed(4)}&timezone=auto&timeformat=unixtime&wind_speed_unit=kmh`;
+  const full = base +
+    '&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,rain,showers,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+    '&minutely_15=precipitation,rain,showers' +
+    '&hourly=precipitation_probability,precipitation,rain,showers,weather_code,cloud_cover,cape,lifted_index,relative_humidity_2m,dew_point_2m,visibility,freezing_level_height,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+    '&daily=precipitation_sum,rain_sum,showers_sum,precipitation_hours,precipitation_probability_max,weather_code,wind_gusts_10m_max' +
+    '&past_days=1&forecast_days=7&forecast_minutely_15=24&past_minutely_15=8';
+  const lite = base +
+    '&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m' +
+    '&minutely_15=precipitation&hourly=precipitation_probability,precipitation,weather_code,cloud_cover,cape' +
+    '&daily=precipitation_sum,precipitation_hours,precipitation_probability_max,weather_code&past_days=1&forecast_days=7';
+  try {
+    let j;
+    try { j = await fetchJSON(full); } catch (e) { j = await fetchJSON(lite); }
+    if (key !== locKey()) return;
+    OM.data = j; OM.key = key; OM.t = Date.now();
+    if (typeof j.utc_offset_seconds === 'number') {
+      const o = j.utc_offset_seconds / 3600;
+      TZ = { off: j.utc_offset_seconds, lbl: 'LOCAL UTC' + (o >= 0 ? '+' : '−') + (Number.isInteger(o) ? Math.abs(o) : Math.abs(o).toFixed(1)) };
+    }
+    setSource('nwp', 'ok', `NWP ${fmtT(Date.now())}`);
+    OFFLINE = false;
+    renderNow(); renderHour(); renderDay(); renderAtmo(); renderStatus(); renderModels(); setRadarSource();
+  } catch (e) {
+    OM.t = Date.now() - 12 * 60000;                       /* retry in ~3 min */
+    if (key === locKey()) setSource('nwp', 'down', 'NWP OFFLINE');
+    checkOffline();
+  }
+}
+async function loadModels() {
+  const key = locKey();
+  const now = Date.now() / 1000;
+  const res = await Promise.all(MODELS.map(async m => {
+    try {
+      const j = await fetchJSON(`${OM_API}?latitude=${LOC.lat.toFixed(4)}&longitude=${LOC.lon.toFixed(4)}&hourly=precipitation&models=${m.id}&forecast_days=3&timeformat=unixtime&timezone=GMT`);
+      const t = j.hourly.time, p = j.hourly.precipitation;
+      let i0 = t.findIndex(v => v + 3600 > now); if (i0 < 0) throw new Error('old');
+      let h6 = 0, h24 = 0, valid = 0, first = null;
+      for (let i = i0; i < Math.min(t.length, i0 + 24); i++) {
+        const v = p[i]; if (v == null) continue;
+        valid++; h24 += v; if (i < i0 + 6) h6 += v;
+        if (first == null && v >= 0.2) first = t[i];
+      }
+      if (valid < 12) return { ...m, ok: false, why: 'n/a' };
+      return { ...m, ok: true, h6, h24, first };
+    } catch (e) { return { ...m, ok: false, why: 'offline' }; }
+  }));
+  if (key !== locKey()) return;
+  OM.models = res; OM.mt = Date.now();
+  const ok = res.filter(r => r.ok).length;
+  setSource('models', ok >= 6 ? 'ok' : ok ? 'warn' : 'down', `MODELS ${ok}/${MODELS.length}`);
+  renderModels(); renderStatus();
+}
+function omIndex(times, now) { let i = -1; for (let k = 0; k < times.length; k++) { if (times[k] <= now) i = k; else break; } return i; }
+
+/* ================= time formatting ================= */
+function fmtT(ms, sec) {
+  const d = new Date(ms + TZ.off * 1000);
+  return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + (sec ? ':' + pad(d.getUTCSeconds()) : '');
+}
+const DAY_TH = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+
+/* ================= panels ================= */
+function setSource(k, s, txt) {
+  SRC[k] = { s, txt };
+  const el = { radar: '#srcRadar', sat: '#srcSat', nwp: '#srcNwp', models: '#srcModels', map: '#srcMap' }[k];
+  if (el) { const n = $(el); n.dataset.s = s; n.innerHTML = '<i></i>' + esc(txt); }
+  const live = $('#liveTag');
+  const rs = SRC.radar ? SRC.radar.s : 'wait';
+  live.dataset.s = rs === 'down' ? 'down' : 'ok';
+  $('#liveTxt').textContent = rs === 'down' ? 'NO LINK' : rs === 'warn' ? 'STALE' : 'LIVE';
+}
+let OFFLINE = false;
+function checkOffline() {
+  OFFLINE = ['radar', 'nwp'].every(k => SRC[k] && SRC[k].s === 'down');
+  renderStatus();
+}
+function renderTrack() {
+  const body = $('#trackBody'), meta = $('#trackMeta'), e = curEntry();
+  if (!e) { body.innerHTML = `<tr><td colspan="7" class="empty">${RV.frames.length ? 'กำลังโหลดภาพเรดาร์…' : 'รอข้อมูลเรดาร์…'}</td></tr>`; meta.textContent = '≥30 dBZ'; return; }
+  if (!e.grid) { body.innerHTML = '<tr><td colspan="7" class="empty">เบราว์เซอร์นี้อ่านค่าพิกเซลเรดาร์ไม่ได้ จึงแสดงภาพอย่างเดียว</td></tr>'; meta.textContent = 'VIEW ONLY'; return; }
+  const cells = e.cells.slice(0, 8);
+  meta.textContent = `${e.cells.length} CELL${e.cells.length === 1 ? '' : 'S'} · ${(e.cover * 100).toFixed(1)}% WET`;
+  if (!cells.length) { body.innerHTML = `<tr><td colspan="7" class="empty">ไม่พบกลุ่มฝน ≥30 dBZ ในรัศมี ${VIEW.km} กม.</td></tr>`; return; }
+  body.innerHTML = cells.map((c, i) => {
+    const cls = c === THREAT ? 'threat' : c.max >= 50 ? 'sev' : c.max >= 40 ? 'hot' : '';
+    const mv = c.spd != null ? `${dir16(c.hdg)}${Math.round(c.spd)}${c.est ? '≈' : ''}` : '—';
+    const eta = c.eta == null ? '—' : c.eta < 1 ? 'NOW' : Math.round(c.eta) + '′';
+    return `<tr class="${cls}"><td>C${pad(i + 1)}</td><td>${pad(Math.round(c.b) % 360, 3)}</td><td>${fmtKm(c.d)}</td><td>${c.max}</td><td>${rainRate(c.max).toFixed(rainRate(c.max) < 10 ? 1 : 0)}</td><td>${mv}</td><td>${eta}</td></tr>`;
+  }).join('');
+}
+function renderStatus() {
+  const p = $('#pStatus'), head = $('#statusHead'), ul = $('#statusList'), meta = $('#statusMeta');
+  const e = liveEntry(), lines = [];
+  let lvl = 0, h;
+  const f = RV.frames[RV.frames.length - 1];
+  if (OFFLINE) {
+    h = 'เชื่อมต่อแหล่งข้อมูลภายนอกไม่ได้'; lvl = 2;
+    lines.push('เปิดหน้านี้ในเว็บเบราว์เซอร์ที่ต่ออินเทอร์เน็ต (Chrome, Safari, Edge) หรือโฮสต์บนเว็บไซต์');
+    lines.push('หน้าพรีวิวบางแบบบล็อกการดึงข้อมูลจากเว็บอื่น ระบบจะลองเชื่อมต่อใหม่ทุก 1–2 นาที');
+  } else if (!e) {
+    h = SRC.radar && SRC.radar.s === 'down' ? 'เชื่อมต่อเรดาร์ไม่ได้ กำลังลองใหม่' : 'กำลังโหลดเรดาร์…';
+  } else if (!e.grid) {
+    h = 'แสดงภาพเรดาร์ (วิเคราะห์ค่าไม่ได้)';
+  } else if (e.center >= 15) {
+    const it = intensity(e.center); lvl = it.l;
+    h = 'ฝนกำลังตกที่ตำแหน่งนี้';
+    lines.push(`ความแรง${it.th} · ${e.center} dBZ ≈ ${rainRate(e.center).toFixed(1)} มม./ชม.`);
+  } else if (THREAT) {
+    const it = intensity(THREAT.max); lvl = Math.max(1, it.l);
+    h = `กลุ่มฝน${it.th}กำลังเข้ามา ถึงในอีก ~${Math.max(1, Math.round(THREAT.eta))} นาที`;
+    lines.push(`ห่าง ${fmtKm(THREAT.d)} กม. ${dirTh(THREAT.b)} · ${THREAT.max} dBZ ≈ ${rainRate(THREAT.max).toFixed(0)} มม./ชม.`);
+    lines.push(`เคลื่อนไป${dirTh(THREAT.hdg)} ${Math.round(THREAT.spd)} กม./ชม.${THREAT.est ? ' (ประมาณจากลมรวม)' : ''}`);
+  } else if (e.nearest) {
+    const it = intensity(e.nearest.v);
+    h = `ฝนใกล้สุดห่าง ${fmtKm(e.nearest.d)} กม.`;
+    lines.push(`${dirTh(e.nearest.b)} (${pad(Math.round(e.nearest.b) % 360, 3)}°) · ${it.th} ${e.nearest.v} dBZ`);
+    if (e.cells && e.cells.length) lines.push(`พบ ${e.cells.length} กลุ่มฝน ≥30 dBZ · ฝนปกคลุม ${(e.cover * 100).toFixed(1)}% ของรัศมี`);
+  } else {
+    h = `ไม่พบฝนในรัศมี ${VIEW.km} กม.`;
+    lines.push('ไม่มีสัญญาณสะท้อนฝน ≥15 dBZ บนเรดาร์');
+  }
+  if (e && e.grid && e.vmax >= 50) lvl = Math.max(lvl, 2);
+  if (COV.covered === false) lines.push({ warn: true, t: 'จุดนี้อยู่นอกพื้นที่ครอบคลุมของเรดาร์ ให้ดูภาพดาวเทียมและโมเดลประกอบ' });
+  const d = OM.data;
+  if (d && d.hourly) {
+    const now = Date.now() / 1000, i = omIndex(d.hourly.time, now);
+    if (i >= 0) {
+      let pmax = 0, sum = 0, ts = false;
+      for (let k = i; k < Math.min(i + 3, d.hourly.time.length); k++) {
+        pmax = Math.max(pmax, d.hourly.precipitation_probability ? (d.hourly.precipitation_probability[k] || 0) : 0);
+        sum += d.hourly.precipitation[k] || 0;
+        if ((d.hourly.weather_code[k] || 0) >= 95) ts = true;
+      }
+      lines.push(`โมเดล 3 ชม.: โอกาสฝน ${Math.round(pmax)}% · รวม ${sum.toFixed(1)} มม.${ts ? ' · มีฟ้าคะนอง' : ''}`);
+      if (ts) lvl = Math.max(lvl, 2);
+    }
+  }
+  if (d && d.current) {
+    const c = d.current, w = wmo(c.weather_code);
+    lines.push(`ตอนนี้ (โมเดล): ${w[1]} · ${Math.round(c.temperature_2m)}°C · ความชื้น ${Math.round(c.relative_humidity_2m)}%`);
+  }
+  p.dataset.l = String(lvl);
+  head.textContent = h;
+  ul.innerHTML = lines.map(l => typeof l === 'string' ? `<li>${esc(l)}</li>` : `<li class="warn">${esc(l.t)}</li>`).join('');
+  meta.textContent = f ? `RADAR ${fmtT(f.time * 1000)}` : '—';
+  const flag = $('#threatFlag');
+  if (THREAT && THREAT.eta != null && e && e.center < 15) { flag.hidden = false; flag.textContent = `INBOUND C${pad(e.cells.indexOf(THREAT) + 1)} · ETA ${Math.max(1, Math.round(THREAT.eta))} MIN`; }
+  else flag.hidden = true;
+}
+function renderNow() {
+  const d = OM.data, box = $('#nowChart'), sum = $('#nowSum');
+  if (!d || !d.minutely_15 || !d.minutely_15.time) { box.innerHTML = '<p class="empty">ไม่มีข้อมูลราย 15 นาที</p>'; sum.textContent = '—'; return; }
+  const t = d.minutely_15.time, p = d.minutely_15.precipitation, now = Date.now() / 1000;
+  const i = omIndex(t, now); if (i < 0) { box.innerHTML = '<p class="empty">ข้อมูลยังไม่ถึงเวลาปัจจุบัน</p>'; return; }
+  const a = Math.max(0, i - 4), b = Math.min(t.length, i + 13);
+  const vals = []; for (let k = a; k < b; k++) vals.push({ t: t[k], v: (p[k] || 0) * 4, past: k < i });
+  const W = 320, H = 92, top = 12, bot = 16, ch = H - top - bot;
+  const mx = Math.max(2, ...vals.map(v => v.v)), bw = W / vals.length;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Rain rate next 3 hours">`;
+  for (const g of [0.5, 1]) s += `<line class="gl" x1="0" x2="${W}" y1="${(top + ch * (1 - g)).toFixed(1)}" y2="${(top + ch * (1 - g)).toFixed(1)}"/>`;
+  vals.forEach((v, k) => {
+    const hgt = v.v / mx * ch, x = k * bw + 1.5;
+    const cls = v.past ? 'b past' : v.v >= 30 ? 'b am' : v.v >= 8 ? 'b hv' : 'b';
+    if (v.v > 0) s += `<rect class="${cls}" x="${x.toFixed(1)}" y="${(top + ch - hgt).toFixed(1)}" width="${(bw - 3).toFixed(1)}" height="${Math.max(1, hgt).toFixed(1)}"/>`;
+    const dt = new Date((v.t + TZ.off) * 1000);
+    if (dt.getUTCMinutes() === 0) s += `<text x="${(x + (bw - 3) / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle">${pad(dt.getUTCHours())}</text>`;
+  });
+  const nx = (i - a) * bw;
+  s += `<line class="now" x1="${nx.toFixed(1)}" x2="${nx.toFixed(1)}" y1="${top - 4}" y2="${top + ch}"/><text class="lbl-now" x="${(nx + 3).toFixed(1)}" y="${top - 3}">NOW</text>`;
+  s += `<line class="ax" x1="0" x2="${W}" y1="${top + ch}" y2="${top + ch}"/><text x="${W}" y="${top - 3}" text-anchor="end">${mx.toFixed(mx < 10 ? 1 : 0)} mm/h</text></svg>`;
+  box.innerHTML = s;
+  const fut = vals.filter(v => !v.past);
+  const first = fut.find(v => v.v >= 0.4);
+  const tot = fut.reduce((q, v) => q + v.v / 4, 0);
+  sum.textContent = first ? `โมเดลคาดฝนเริ่มราว ${fmtT(first.t * 1000)} · รวม 3 ชม. ${tot.toFixed(1)} มม.` : 'โมเดลไม่คาดว่าจะมีฝนใน 3 ชม.ข้างหน้า';
+}
+function renderHour() {
+  const d = OM.data, box = $('#hourChart');
+  if (!d || !d.hourly) { box.innerHTML = '<p class="empty">รอข้อมูล…</p>'; return; }
+  const h = d.hourly, now = Date.now() / 1000, i = omIndex(h.time, now);
+  if (i < 0) return;
+  const n = Math.min(24, h.time.length - i), W = 320, H = 110, top = 12, bot = 16, ch = H - top - bot, bw = W / n;
+  const pr = [], pp = [], wc = [];
+  for (let k = 0; k < n; k++) { pr.push(h.precipitation[i + k] || 0); pp.push(h.precipitation_probability ? h.precipitation_probability[i + k] : null); wc.push(h.weather_code[i + k] || 0); }
+  const mx = Math.max(2, ...pr);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Hourly rain next 24 hours">`;
+  for (const g of [0.25, 0.5, 0.75, 1]) s += `<line class="gl" x1="0" x2="${W}" y1="${(top + ch * (1 - g)).toFixed(1)}" y2="${(top + ch * (1 - g)).toFixed(1)}"/>`;
+  pr.forEach((v, k) => {
+    const hgt = v / mx * ch, x = k * bw + 1;
+    if (v > 0) s += `<rect class="b${v >= 10 ? ' am' : v >= 4 ? ' hv' : ''}" x="${x.toFixed(1)}" y="${(top + ch - hgt).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${Math.max(1, hgt).toFixed(1)}"/>`;
+    if (wc[k] >= 95) { const cx = x + (bw - 2) / 2; s += `<path class="ts" d="M${(cx - 2).toFixed(1)} ${top - 9} l3 4 -3 0 3 4"/>`; }
+    const dt = new Date((h.time[i + k] + TZ.off) * 1000);
+    if (k % 3 === 0) s += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle">${pad(dt.getUTCHours())}</text>`;
+  });
+  if (pp.some(v => v != null)) {
+    const pts = pp.map((v, k) => v == null ? null : `${(k * bw + bw / 2).toFixed(1)},${(top + ch * (1 - v / 100)).toFixed(1)}`).filter(Boolean);
+    s += `<polyline class="pl" points="${pts.join(' ')}"/>`;
+  }
+  s += `<line class="ax" x1="0" x2="${W}" y1="${top + ch}" y2="${top + ch}"/>`;
+  s += `<text x="0" y="${top - 3}">${mx.toFixed(mx < 10 ? 1 : 0)} mm/h</text><text x="${W}" y="${top - 3}" text-anchor="end">100%</text></svg>`;
+  box.innerHTML = s;
+}
+function renderDay() {
+  const d = OM.data, body = $('#dayBody');
+  if (!d || !d.daily) return;
+  const dl = d.daily, now = Date.now() / 1000;
+  let i0 = omIndex(dl.time, now); if (i0 < 0) i0 = 0;
+  const rows = [];
+  const mx = Math.max(5, ...dl.precipitation_sum.slice(i0, i0 + 7).map(v => v || 0));
+  for (let k = i0; k < Math.min(dl.time.length, i0 + 7); k++) {
+    const dt = new Date((dl.time[k] + TZ.off) * 1000);
+    const mm = dl.precipitation_sum[k] || 0, pr = dl.precipitation_probability_max ? dl.precipitation_probability_max[k] : null;
+    const w = wmo(dl.weather_code[k]);
+    const cls = (dl.weather_code[k] >= 95 || mm >= 35) ? 'threat' : '';
+    rows.push(`<tr class="${cls}"><td>${k === i0 ? 'วันนี้' : DAY_TH[dt.getUTCDay()]} ${dt.getUTCDate()}</td><td title="${esc(w[1])}">${esc(w[0])}</td><td>${mm.toFixed(1)}</td><td class="barcell"><span class="mbar${mm >= 35 ? ' am' : ''}" style="width:${(mm / mx * 100).toFixed(0)}%"></span></td><td>${pr == null ? '—' : Math.round(pr) + '%'}</td><td>${dl.precipitation_hours ? Math.round(dl.precipitation_hours[k] || 0) : '—'}</td></tr>`);
+  }
+  body.innerHTML = rows.join('');
+}
+function renderAtmo() {
+  const d = OM.data, box = $('#atmo'), meta = $('#atmoMeta');
+  if (!d || !d.current) return;
+  const c = d.current, h = d.hourly, now = Date.now() / 1000, i = h ? omIndex(h.time, now) : -1;
+  const hv = k => (h && i >= 0 && h[k]) ? h[k][i] : null;
+  const w = wmo(c.weather_code);
+  let past24 = 0, next24 = 0;
+  if (h && i >= 0) {
+    for (let k = Math.max(0, i - 24); k < i; k++) past24 += h.precipitation[k] || 0;
+    for (let k = i; k < Math.min(h.time.length, i + 24); k++) next24 += h.precipitation[k] || 0;
+  }
+  let capeMax = 0, liMin = null, tsH = 0;
+  if (h && i >= 0) for (let k = i; k < Math.min(h.time.length, i + 6); k++) {
+    capeMax = Math.max(capeMax, (h.cape && h.cape[k]) || 0);
+    if (h.lifted_index && h.lifted_index[k] != null) liMin = liMin == null ? h.lifted_index[k] : Math.min(liMin, h.lifted_index[k]);
+    if ((h.weather_code[k] || 0) >= 95) tsH++;
+  }
+  const risk = tsH >= 2 || capeMax >= 2500 ? ['HIGH', 'alarm'] : tsH >= 1 || capeMax >= 1200 ? ['MOD', 'amber'] : capeMax >= 400 ? ['LOW', 'glow'] : ['NIL', 'dim'];
+  const v = (x, u, dg = 0) => x == null ? '—' : `${Number(x).toFixed(dg)}${u}`;
+  const items = [
+    ['WX NOW', `${w[0]} ${w[1]}`], ['THUNDER 6H', `<span class="${risk[1]}">${risk[0]}</span>`],
+    ['RAIN −24H', v(past24, ' mm', 1)], ['RAIN +24H', v(next24, ' mm', 1)],
+    ['CAPE 6H MAX', v(capeMax, ' J/kg')], ['LIFTED IDX', v(liMin, '°C', 1)],
+    ['HUMIDITY', v(c.relative_humidity_2m, '%')], ['DEW POINT', v(c.dew_point_2m != null ? c.dew_point_2m : hv('dew_point_2m'), '°C', 1)],
+    ['TEMP', v(c.temperature_2m, '°C', 1)], ['PRESSURE', v(c.pressure_msl, ' hPa', 1)],
+    ['WIND', c.wind_speed_10m == null ? '—' : `${pad(Math.round(c.wind_direction_10m) % 360, 3)}° ${Math.round(c.wind_speed_10m)} km/h`], ['GUST', v(c.wind_gusts_10m, ' km/h')],
+    ['CLOUD', v(c.cloud_cover, '%')], ['VISIBILITY', hv('visibility') == null ? '—' : (hv('visibility') / 1000).toFixed(1) + ' km'],
+    ['FREEZING LVL', v(hv('freezing_level_height'), ' m')], ['RAIN NOW', v(c.precipitation, ' mm', 1)]
+  ];
+  box.innerHTML = items.map(([k, val]) => `<div><span>${k}</span><b>${val.startsWith('<span') ? val : esc(val)}</b></div>`).join('');
+  meta.textContent = `MODEL · ${fmtT((c.time || now) * 1000)}`;
+}
+function renderModels() {
+  const body = $('#modelBody'), meta = $('#modelMeta'), note = $('#modelNote'), r = OM.models;
+  if (!r) return;
+  const ok = r.filter(m => m.ok), mx = Math.max(5, ...ok.map(m => m.h24));
+  body.innerHTML = r.map(m => m.ok
+    ? `<tr><td>${esc(m.name)}</td><td>${m.h6.toFixed(1)}</td><td>${m.h24.toFixed(1)}</td><td class="barcell"><span class="mbar${m.h24 >= 35 ? ' am' : ''}" style="width:${(m.h24 / mx * 100).toFixed(0)}%"></span></td><td>${m.first ? fmtT(m.first * 1000) : '—'}</td></tr>`
+    : `<tr><td class="dim">${esc(m.name)}</td><td colspan="4" class="dim" style="text-align:left">${m.why === 'n/a' ? 'ไม่ครอบคลุมจุดนี้' : 'เชื่อมต่อไม่ได้'}</td></tr>`).join('');
+  const wet = ok.filter(m => m.h24 >= 1).length;
+  meta.textContent = ok.length ? `${wet}/${ok.length} คาดฝน ≥1 มม./24ชม.` : '—';
+  if (ok.length) {
+    const vals = ok.map(m => m.h24).sort((a, b) => a - b), med = vals[vals.length >> 1];
+    const agree = wet / ok.length;
+    note.textContent = `ค่ากลาง ${med.toFixed(1)} มม. ช่วง ${vals[0].toFixed(1)}–${vals[vals.length - 1].toFixed(1)} มม. · ` +
+      (agree >= 0.75 ? 'โมเดลส่วนใหญ่เห็นตรงกันว่าจะมีฝน' : agree <= 0.25 ? 'โมเดลส่วนใหญ่เห็นตรงกันว่าแห้ง' : 'โมเดลยังเห็นไม่ตรงกัน ความไม่แน่นอนสูง');
+  } else note.textContent = '';
+}
+function renderSats() {
+  const body = $('#satBody'); if (!VIEW) return;
+  const active = SAT.cur;
+  const rows = SATS.map(s => {
+    const el = satElev(s, VIEW.lat, VIEW.lon);
+    const pos = `${Math.abs(s.lon).toFixed(1)}°${s.lon >= 0 ? 'E' : 'W'}`;
+    const pressed = UI.sat === s.id;
+    return `<tr class="sat-row${s === active ? ' active' : ''}"><td><span class="dot" data-s="${s.status}"></span>${esc(s.name)}</td><td>${pos}</td><td>${el > 0 ? Math.round(el) + '°' : '<span class="dim">↓</span>'}</td><td class="dim">${esc(s.prov)}</td><td><button class="use" type="button" data-sat="${s.id}" aria-pressed="${pressed}">${pressed ? 'LOCK' : 'USE'}</button></td></tr>`;
+  });
+  rows.push(`<tr class="sat-row${UI.layers.gpm ? ' active' : ''}"><td><span class="dot" data-s="${GPM.status}"></span>${GPM.name}</td><td>LEO</td><td>—</td><td class="dim">${GPM.prov}</td><td><button class="use" type="button" data-gpm="1" aria-pressed="${UI.layers.gpm}">${UI.layers.gpm ? 'ON' : 'OFF'}</button></td></tr>`);
+  body.innerHTML = rows.join('');
+}
+function renderHUD() {
+  if (!VIEW) return;
+  const e = curEntry(), f = RV.frames[RV.idx];
+  $('#hudTL').innerHTML = `RANGE <b>${VIEW.km} KM</b><br>RINGS <b>${fmtRing(VIEW.km / 4)} KM</b><br><span class="xs">GRID z${RV.z} · ${e && e.box ? fmtKm(e.box.mpp * Math.cos(VIEW.lat * D2R) / 1000) : '—'} KM/PX</span>`;
+  const age = f ? Math.round((Date.now() / 1000 - f.time) / 60) : null;
+  $('#hudTR').innerHTML = f ? `RADAR <b>${fmtT(f.time * 1000)}</b><br>AGE <b>−${age} MIN</b><br><span class="xs">FRAME ${RV.idx + 1}/${RV.frames.length}</span>` : 'RADAR <b>—</b>';
+  const s = SAT.cur;
+  $('#hudBR').innerHTML = s && UI.layers.sat ? `SAT <b>${s.id}</b> ${SAT.time && SAT.cur === s ? '<b>' + fmtT(Date.parse(SAT.time)) + '</b>' : 'LATEST'}<br><span class="xs">${esc(s.sensor)}<br></span>EL <b>${Math.round(satElev(s, VIEW.lat, VIEW.lon))}°</b>` : `SAT <b>OFF</b>`;
+  if (!$('#hudBL').dataset.done) {
+    const stops = [10, 20, 30, 40, 50, 55];
+    $('#hudBL').innerHTML = `dBZ<div class="legend">${stops.map(v => { const c = phosRGBA(v); return `<i style="background:rgba(${c[0]},${c[1]},${c[2]},${(c[3] / 255).toFixed(2)})"></i>`; }).join('')}</div><div class="legend-n">${stops.map(v => `<span>${v}</span>`).join('')}</div>`;
+    $('#hudBL').dataset.done = '1';
+  }
+}
+function renderTimeline() {
+  const t = $('#ticks');
+  const n = RV.frames.length;
+  if (t.children.length !== n) {
+    t.innerHTML = RV.frames.map((f, i) => `<button type="button" data-i="${i}" aria-label="frame ${i + 1}"><i></i></button>`).join('');
+  }
+  [...t.children].forEach((b, i) => {
+    const f = RV.frames[i];
+    b.dataset.ok = f && RV.data.has(f.time) ? '1' : '0';
+    b.setAttribute('aria-current', i === RV.idx ? 'true' : 'false');
+    if (f) b.title = fmtT(f.time * 1000);
+  });
+  const f = RV.frames[RV.idx];
+  $('#frameLbl').innerHTML = f ? `FRAME <b>${fmtT(f.time * 1000)}</b> ${UI.mode === 'live' ? '· LIVE' : '· −' + Math.round((RV.frames[n - 1].time - f.time) / 60) + ' MIN'}` : 'FRAME <b>--:--</b>';
+}
+function onFrame() {
+  if (echoFor !== curEntry()) buildEcho();
+  computeThreat(); renderTrack(); renderStatus(); renderHUD(); renderTimeline(); setRadarSource();
+}
+
+/* ================= interaction ================= */
+function probeFromEvent(ev) {
+  const r = SC.cv.getBoundingClientRect();
+  const px = (ev.clientX - r.left) * SC.PX / r.width, py = (ev.clientY - r.top) * SC.PX / r.height;
+  const dx = px - SC.C, dy = py - SC.C, rr = Math.hypot(dx, dy);
+  if (!VIEW || rr > SC.RR) return null;
+  const k = SC.RR / VIEW.H, X = VIEW.X0 + dx / k, Y = VIEW.Y0 - dy / k;
+  const lat = latOf(Y), lon = lonOf(X);
+  const e = curEntry(); let v = null;
+  if (e && e.grid) {
+    const gx = Math.floor((X - e.box.bx0) / e.box.mpp), gy = Math.floor((e.box.by1 - Y) / e.box.mpp);
+    if (gx >= 0 && gy >= 0 && gx < e.box.W && gy < e.box.H) v = e.grid[gy * e.box.W + gx];
+  }
+  return { lat, lon, d: hav(VIEW.lat, VIEW.lon, lat, lon), b: brg(VIEW.lat, VIEW.lon, lat, lon), v, cx: ev.clientX - r.left, cy: ev.clientY - r.top };
+}
+function showProbe(p) {
+  if (!p) { ['#roAz', '#roRng', '#roLat', '#roLon', '#roEcho'].forEach(s => $(s).textContent = '—'); return; }
+  $('#roAz').textContent = p.b.toFixed(2).padStart(6, '0') + '°';
+  $('#roRng').textContent = p.d.toFixed(1) + ' KM';
+  $('#roLat').textContent = fmtLat(p.lat);
+  $('#roLon').textContent = fmtLon(p.lon);
+  $('#roEcho').textContent = p.v == null ? '—' : p.v < 8 ? 'NIL' : `${p.v} dBZ · ${rainRate(p.v).toFixed(1)} mm/h`;
+}
+SC.cv.addEventListener('pointermove', ev => {
+  if (ev.pointerType !== 'mouse') return;
+  const p = probeFromEvent(ev), tip = $('#tip');
+  if (!p) { tip.hidden = true; if (!PROBE) showProbe(null); return; }
+  tip.hidden = false; tip.style.left = p.cx + 'px'; tip.style.top = p.cy + 'px';
+  tip.textContent = `${pad(Math.round(p.b) % 360, 3)}° ${fmtKm(p.d)}KM ${p.v != null && p.v >= 8 ? p.v + 'dBZ' : ''}`;
+  if (!PROBE) showProbe(p);
+});
+SC.cv.addEventListener('pointerleave', () => { $('#tip').hidden = true; if (!PROBE) showProbe(null); else showProbe(PROBE); });
+SC.cv.addEventListener('click', ev => {
+  const p = probeFromEvent(ev);
+  if (!p || (PROBE && Math.hypot(p.lat - PROBE.lat, p.lon - PROBE.lon) < 1e-4)) { PROBE = null; $('#btnCenter').hidden = true; showProbe(null); return; }
+  PROBE = p; showProbe(p); $('#btnCenter').hidden = false;
+});
+$('#btnCenter').addEventListener('click', () => { if (PROBE) setLocation({ lat: PROBE.lat, lon: PROBE.lon, name: null }); });
+
+function syncButtons() {
+  document.querySelectorAll('#segRange button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === UI.range)));
+  document.querySelectorAll('#segLayer button').forEach(b => b.setAttribute('aria-pressed', String(!!UI.layers[b.dataset.l])));
+  $('#btnPlay').setAttribute('aria-pressed', String(UI.mode === 'loop'));
+  $('#btnPlay').textContent = UI.mode === 'loop' ? '❚❚ PAUSE' : '▶ LOOP 2H';
+}
+$('#segRange').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  UI.range = +b.dataset.v; store.set('range', UI.range); syncButtons(); applyView();
+});
+$('#segLayer').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  const l = b.dataset.l; UI.layers[l] = !UI.layers[l]; store.set('layers', UI.layers); syncButtons();
+  if (l === 'sat' && UI.layers.sat && !SAT.box) loadSat(GEN);
+  if (l === 'gpm') loadGpm(GEN);
+  composeBase(); renderSats(); renderHUD();
+});
+$('#satBody').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.gpm) { UI.layers.gpm = !UI.layers.gpm; store.set('layers', UI.layers); syncButtons(); loadGpm(GEN); return; }
+  UI.sat = UI.sat === b.dataset.sat ? 'auto' : b.dataset.sat; store.set('sat', UI.sat);
+  $('#satSel').value = UI.sat; UI.layers.sat = true; syncButtons(); loadSat(GEN); drawWorld();
+});
+const satSel = $('#satSel');
+satSel.innerHTML = '<option value="auto">AUTO · มุมเงยสูงสุด</option>' + SATS.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+satSel.value = UI.sat;
+satSel.addEventListener('change', () => { UI.sat = satSel.value; store.set('sat', UI.sat); UI.layers.sat = true; syncButtons(); loadSat(GEN); drawWorld(); });
+const preset = $('#preset');
+preset.innerHTML = '<option value="">เลือกเมือง…</option>' + PRESETS.map((g, gi) => `<optgroup label="${esc(g[0])}">${g[1].map((p, pi) => `<option value="${gi}:${pi}">${esc(p[0])}</option>`).join('')}</optgroup>`).join('');
+preset.addEventListener('change', () => {
+  if (!preset.value) return;
+  const [gi, pi] = preset.value.split(':').map(Number), p = PRESETS[gi][1][pi];
+  setLocation({ lat: p[1], lon: p[2], name: p[0] }); preset.value = '';
+});
+$('#btnGps').addEventListener('click', () => {
+  const b = $('#btnGps');
+  if (!navigator.geolocation) { b.textContent = '⌖ ไม่รองรับ GPS'; return; }
+  b.textContent = '⌖ กำลังหา…';
+  navigator.geolocation.getCurrentPosition(pos => {
+    b.textContent = '⌖ ตำแหน่งฉัน';
+    setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude, name: null });
+  }, () => { b.textContent = '⌖ ไม่ได้รับอนุญาต'; setTimeout(() => { b.textContent = '⌖ ตำแหน่งฉัน'; }, 3000); }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
+});
+const qIn = $('#q'), qRes = $('#qres');
+let qTimer = 0, qSeq = 0;
+qIn.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(search, 380); });
+qIn.addEventListener('keydown', ev => { if (ev.key === 'Enter') { clearTimeout(qTimer); search(); } if (ev.key === 'Escape') qRes.hidden = true; });
+async function search() {
+  const q = qIn.value.trim(); if (q.length < 2) { qRes.hidden = true; return; }
+  const seq = ++qSeq;
+  try {
+    const j = await fetchJSON(`${GEO_API}?name=${encodeURIComponent(q)}&count=6&language=th&format=json`);
+    if (seq !== qSeq) return;
+    const r = j.results || [];
+    qRes.innerHTML = r.length ? r.map((p, i) => `<li><button type="button" data-i="${i}">${esc(p.name)} <small>${esc([p.admin1, p.country].filter(Boolean).join(', '))}</small></button></li>`).join('') : '<li><button type="button" disabled>ไม่พบสถานที่</button></li>';
+    qRes.hidden = false;
+    qRes.onclick = ev => {
+      const b = ev.target.closest('button[data-i]'); if (!b) return;
+      const p = r[+b.dataset.i]; qRes.hidden = true; qIn.value = '';
+      setLocation({ lat: p.latitude, lon: p.longitude, name: [p.name, p.country].filter(Boolean).join(' · ') });
+    };
+  } catch (e) { if (seq === qSeq) { qRes.innerHTML = '<li><button type="button" disabled>ค้นหาไม่ได้ในขณะนี้</button></li>'; qRes.hidden = false; } }
+}
+document.addEventListener('click', ev => { if (!ev.target.closest('.search')) qRes.hidden = true; });
+
+let loopTimer = 0;
+$('#btnPlay').addEventListener('click', () => {
+  if (UI.mode === 'loop') { UI.mode = 'live'; clearTimeout(loopTimer); RV.idx = RV.frames.length - 1; }
+  else { UI.mode = 'loop'; stepLoop(); }
+  syncButtons(); onFrame();
+});
+function stepLoop() {
+  if (UI.mode !== 'loop') return;
+  const n = RV.frames.length; if (!n) return;
+  let i = RV.idx;
+  for (let k = 0; k < n; k++) { i = (i + 1) % n; if (RV.data.has(RV.frames[i].time)) break; }
+  RV.idx = i; onFrame();
+  loopTimer = setTimeout(stepLoop, i === n - 1 ? 1500 : 600);
+}
+$('#ticks').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  clearTimeout(loopTimer);
+  const i = +b.dataset.i;
+  UI.mode = i === RV.frames.length - 1 ? 'live' : 'hold';
+  RV.idx = i; syncButtons(); onFrame();
+});
+
+/* ================= location / view ================= */
+async function reverseName(lat, lon) {
+  try {
+    const j = await fetchJSON(`${REV_API}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&localityLanguage=th`, 12000);
+    const a = j.city || j.locality || j.principalSubdivision;
+    return a ? [a, j.countryName].filter(Boolean).join(' · ') : null;
+  } catch (e) { return null; }
+}
+function setLocation(loc) {
+  LOC = { lat: clamp(loc.lat, -78, 78), lon: ((loc.lon + 540) % 360) - 180, name: loc.name || null };
+  PROBE = null; $('#btnCenter').hidden = true; showProbe(null);
+  renderSite();
+  if (!LOC.name) {
+    const key = locKey();
+    reverseName(LOC.lat, LOC.lon).then(n => { if (key === locKey()) { LOC.name = n || 'จุดที่เลือก'; store.set('loc', LOC); renderSite(); } });
+  }
+  store.set('loc', LOC);
+  OM.data = null; OM.models = null;
+  applyView();
+  loadForecast(); loadModels();
+}
+function renderSite() {
+  $('#siteName').textContent = LOC.name || 'กำลังระบุชื่อ…';
+  $('#siteCoord').textContent = `${fmtLat(LOC.lat)} ${fmtLon(LOC.lon)}`;
+}
+function applyView() {
+  GEN++;
+  const g = GEN;
+  VIEW = makeView(LOC.lat, LOC.lon, UI.range);
+  RV.z = rvZoom(VIEW);
+  RV.data.clear(); RV.pending.clear();
+  MAP.box = SAT.box = GPMX.box = COV.box = null; COV.covered = null; THREAT = null;
+  if (UI.mode !== 'live') { UI.mode = 'live'; clearTimeout(loopTimer); syncButtons(); }
+  RV.idx = RV.frames.length - 1;
+  buildStatic(); composeBase(); buildEcho();
+  renderHUD(); renderTrack(); renderStatus(); renderSats(); renderTimeline(); drawWorld(); layoutGrid();
+  loadMap(g); loadSat(g); if (UI.layers.gpm) loadGpm(g);
+  if (RV.frames.length) { loadFramesForView(g); loadCoverage(g); } else refreshRadar();
+}
+
+/* keep the background graticule and crosshair centred on the scope */
+function layoutGrid() {
+  const con = $('#console'), cr = con.getBoundingClientRect(), sr = SC.cv.getBoundingClientRect();
+  const cx = sr.left - cr.left + sr.width / 2, cy = sr.top - cr.top + sr.height / 2;
+  con.style.setProperty('--cx', cx.toFixed(1) + 'px');
+  con.style.setProperty('--cy', cy.toFixed(1) + 'px');
+}
+
+/* ================= clocks & schedule ================= */
+function tick() {
+  const now = Date.now(), d = new Date(now);
+  $('#clkUtc').textContent = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+  $('#clkLoc').textContent = fmtT(now, true);
+  $('#clkLocLbl').textContent = TZ.lbl;
+  const f = RV.frames[RV.frames.length - 1];
+  if (f) {
+    const next = (f.time + 600 + 150) * 1000 - now;
+    $('#barNext').textContent = next > 0 ? `NEXT SCAN ~${pad(Math.floor(next / 60000))}:${pad(Math.floor(next / 1000) % 60)}` : 'NEXT SCAN DUE';
+    if (d.getUTCSeconds() % 15 === 0) { renderHUD(); setRadarSource(); }
+  }
+  if (now - RV.lastCheck > (f && now > (f.time + 660) * 1000 ? 60000 : 120000)) refreshRadar();
+  if (OM.t && now - OM.t > 15 * 60000) { OM.t = now; loadForecast(); }
+  if (now - (SAT.t || BOOT) > 10 * 60000) { SAT.t = now; loadSat(GEN); if (UI.layers.gpm) loadGpm(GEN); }
+  if (now - (OM.mt || BOOT) > 60 * 60000) { OM.mt = now; loadModels(); }
+  if (now - (WD.irt || BOOT) > 20 * 60000) { WD.irt = now; loadWorldIR(); }
+}
+let rsT = 0;
+function onResize() {
+  clearTimeout(rsT);
+  rsT = setTimeout(() => {
+    layoutGrid();
+    if (resizeScope()) { composeBase(); buildEcho(); }
+    sizeWorld();
+  }, 120);
+}
+window.addEventListener('resize', onResize);
+if ('ResizeObserver' in window) new ResizeObserver(onResize).observe(SC.cv);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    if (!painting) requestAnimationFrame(paint);
+    if (Date.now() - RV.lastCheck > 60000) refreshRadar();
+    if (OM.t && Date.now() - OM.t > 10 * 60000) { OM.t = Date.now(); loadForecast(); }
+  }
+});
+
+/* ================= boot ================= */
+const BOOT = Date.now();
+function boot() {
+  syncButtons();
+  resizeScope(); sizeWorld();
+  renderSite();
+  setLocation(LOC);
+  loadWorldBase(); loadWorldIR();
+  if (document.fonts && document.fonts.load) {
+    Promise.all([document.fonts.load('12px "Share Tech Mono"'), document.fonts.load('12px "Chakra Petch"')])
+      .then(() => { buildStatic(); composeBase(); drawWorld(); }).catch(() => {});
+  }
+  tick(); setInterval(tick, 1000);
+  requestAnimationFrame(paint);
+}
+boot();
+})();
+</script>
+</body>
+</html>
