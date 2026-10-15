@@ -222,6 +222,8 @@ tr.active td{color:var(--glow)}
 .src[data-s="down"] i{background:var(--alarm)}
 .src[data-s="down"]{color:var(--alarm)}
 .bar .credit{margin-left:auto;max-width:100%}
+.upd{background:transparent;border:1px solid var(--trace);color:var(--phosphor);padding:3px 8px;min-height:26px;letter-spacing:.05em;font-size:10.5px}
+.upd:hover{border-color:var(--phosphor);color:var(--glow)}
 .bar a{color:var(--dim)}
 .bar a:hover{color:var(--phosphor)}
 
@@ -401,7 +403,8 @@ tr.active td{color:var(--glow)}
     <span class="src" id="srcNwp" data-s="wait"><i></i>NWP —</span>
     <span class="src" id="srcModels" data-s="wait"><i></i>MODELS —</span>
     <span class="src" id="srcMap" data-s="wait"><i></i>MAP —</span>
-    <span id="barNext">NEXT SCAN —</span>
+    <span id="barScan">NEXT RADAR —</span>
+    <button class="upd" id="barNext" type="button" title="แตะเพื่ออัปเดตเดี๋ยวนี้">⟳ NEXT UPDATE 1:00</button>
     <span class="credit">RADAR <a href="https://www.rainviewer.com" target="_blank" rel="noopener">RainViewer</a> · SAT <a href="https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api" target="_blank" rel="noopener">NASA GIBS</a> / <a href="https://view.eumetsat.int" target="_blank" rel="noopener">EUMETSAT</a> · NWP <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) · MAP <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener">Natural Earth</a></span>
   </footer>
 </div>
@@ -501,7 +504,7 @@ const MODELS = [
 ];
 const PRESETS = [
   ['ประเทศไทย', [
-    ['กรุงเทพฯ · Bangkok', 13.7563, 100.5018], ['เชียงใหม่ · Chiang Mai', 18.7883, 98.9853], ['เชียงราย · Chiang Rai', 19.9105, 99.8406],
+    ['กรุงเทพฯ · Bangkok', 13.7563, 100.5018], ['นครนายก · Nakhon Nayok', 14.2046, 101.2130], ['เชียงใหม่ · Chiang Mai', 18.7883, 98.9853], ['เชียงราย · Chiang Rai', 19.9105, 99.8406],
     ['พิษณุโลก · Phitsanulok', 16.8211, 100.2659], ['นครสวรรค์ · Nakhon Sawan', 15.7047, 100.1372], ['ขอนแก่น · Khon Kaen', 16.4322, 102.8236],
     ['อุดรธานี · Udon Thani', 17.4138, 102.7872], ['นครราชสีมา · Korat', 14.9799, 102.0978], ['อุบลราชธานี · Ubon', 15.2287, 104.8564],
     ['พัทยา · Pattaya', 12.9236, 100.8825], ['ระยอง · Rayong', 12.6814, 101.2816], ['หัวหิน · Hua Hin', 12.5684, 99.9577],
@@ -687,13 +690,14 @@ async function wmsBox(src, b, W, H, time, ms = 45000) {
   }
   return { canvas: c, W, H, mpp: (b.x1 - b.x0) / W, bx0: b.x0, by1: b.y1, clean: r.clean };
 }
-/* NASA GIBS serves geostationary imagery every 10 min with some latency: walk back from now to the newest slot that has pixels */
-async function latestSatTime(s, view) {
+/* NASA GIBS serves geostationary imagery every 10 min with some latency: walk back from now to the newest slot that has pixels.
+   With `after` (the update check), only slots newer than the picture on screen are probed. */
+async function latestSatTime(s, view, after) {
   if (s.wms !== GIBS_WMS) return null;
-  if (s.tc && Date.now() - s.tc.at < 8 * 60000) return s.tc.t;
-  const step = 600000;
+  if (!after && s.tc && Date.now() - s.tc.at < 8 * 60000) return s.tc.t;
+  const step = 600000, stop = after ? Date.parse(after) : -Infinity;
   let t = Math.floor((Date.now() - 10 * 60000) / step) * step;
-  for (let k = 0; k < 10; k++, t -= step) {
+  for (let k = 0; k < (after ? 3 : 10) && t > stop; k++, t -= step) {
     const iso = new Date(t).toISOString().slice(0, 19) + 'Z';
     try {
       const bx = await wmsBox(s, view, 40, 40, iso, 15000);
@@ -703,7 +707,7 @@ async function latestSatTime(s, view) {
       if (n > 320) { s.tc = { t: iso, at: Date.now() }; return iso; }
     } catch (e) { /* try the previous slot */ }
   }
-  return null;
+  return after || null;
 }
 
 /* turn a source image into phosphor light.
@@ -952,8 +956,8 @@ function drawOverlay(x, beam) {
   x.beginPath(); x.arc(C, C, SC.RR, 0, TAU); x.clip();
   x.font = `${Math.round(10 * s)}px "Share Tech Mono", ui-monospace, monospace`; x.textBaseline = 'middle';
   if (UI.layers.cells && e && e.cells) {
-    const cells = e.cells.slice(0, 12);
-    cells.forEach((c, i) => {
+    const labels = [];
+    e.cells.forEach((c, i) => {
       const px = C + (mercX(c.lon) - VIEW.X0) * k, py = C - (mercY(c.lat) - VIEW.Y0) * k;
       const since = ((((beam - c.b) % 360) + 360) % 360) * D2R;
       const al = UI.reduce ? 0.95 : Math.max(0.3, Math.exp(-since / 2.4));
@@ -977,11 +981,22 @@ function drawOverlay(x, beam) {
         x.moveTo(ex, ey); x.lineTo(ex - hx * 5 * s + hy * 3 * s, ey - hy * 5 * s - hx * 3 * s);
         x.stroke();
       }
-      if (al > 0.42 || threat) {
-        x.fillStyle = `rgba(${col},${Math.max(al, threat ? 0.9 : 0)})`;
-        x.fillText(`C${pad(i + 1)} ${c.max}`, px + r + 4 * s, py - r + 5 * s);
-      }
+      const heavy = c.max >= 40;
+      if (al > 0.42 || threat || heavy) labels.push({ i, c, col, x: px + r + 4 * s, xl: px - r - 4 * s, y: py - r + 5 * s, a: Math.max(al, threat ? 0.95 : heavy ? 0.85 : 0), p: threat ? 2 : heavy ? 1 : 0 });
     });
+    labels.sort((u, v) => v.p - u.p || v.c.max - u.c.max);
+    const placed = [], lh = 11 * s;
+    for (const lb of labels) {
+      const t = `C${pad(lb.i + 1)} ${lb.c.max}`, w = x.measureText(t).width;
+      const dy = lb.y - C, edge = C + Math.sqrt(Math.max(0, SC.RR * SC.RR - dy * dy)) - 3 * s;
+      const tx = lb.x + w > edge ? lb.xl - w : lb.x;                 /* flip to the left near the rim */
+      const rc = [tx - 2 * s, lb.y - lh / 2, w + 4 * s, lh];
+      if (placed.some(o => rc[0] < o[0] + o[2] && rc[0] + rc[2] > o[0] && rc[1] < o[1] + o[3] && rc[1] + rc[3] > o[1])) continue;
+      placed.push(rc);
+      x.fillStyle = `rgba(0,10,4,${(0.75 * lb.a).toFixed(2)})`; x.fillRect(rc[0], rc[1], rc[2], rc[3]);
+      x.fillStyle = `rgba(${lb.col},${lb.a})`;
+      x.fillText(t, tx, lb.y);
+    }
     if (THREAT && e === liveEntry()) {
       const px = C + (mercX(THREAT.lon) - VIEW.X0) * k, py = C - (mercY(THREAT.lat) - VIEW.Y0) * k;
       x.setLineDash([4 * s, 4 * s]); x.strokeStyle = 'rgba(255,194,61,.7)'; x.lineWidth = 1 * s;
@@ -1102,7 +1117,9 @@ function detectCells(e) {
     cells.push({ lat, lon, d, b: brg(VIEW.lat, VIEW.lon, lat, lon), max: mx, area, ve: null, vn: null, spd: null, hdg: null, eta: null, est: false });
   }
   cells.sort((a, b) => a.d - b.d);
-  return cells.slice(0, 30);
+  if (cells.length <= 30) return cells;
+  const strongest = cells.slice(8).sort((a, b) => b.max - a.max || b.area - a.area).slice(0, 22);
+  return cells.slice(0, 8).concat(strongest).sort((a, b) => a.d - b.d);
 }
 const enOf = c => [(c.lon - VIEW.lon) * Math.cos(VIEW.lat * D2R) * 111.32, (c.lat - VIEW.lat) * 110.57];
 function track(cur, prev, dtMin) {
@@ -1293,8 +1310,17 @@ function pickSat() {
   for (const s of SATS) { const el = satElev(s, VIEW.lat, VIEW.lon); if (el > be) { be = el; best = s; } }
   return best;
 }
-async function loadSat(g) {
-  const s = pickSat(); SAT.cur = s; SAT.time = null;
+async function loadSat(g, poll) {
+  const s = pickSat();
+  if (poll && s && s === SAT.cur && SAT.box) {
+    /* update check: download only when the satellite has published a newer picture */
+    if (SAT.time) {
+      const t = await latestSatTime(s, VIEW, SAT.time);
+      if (g !== GEN || t === SAT.time) return;
+    } else if (Math.floor(Date.now() / 600000) === SAT.bucket) return;
+  }
+  if (s !== SAT.cur) SAT.time = null;
+  SAT.cur = s;
   if (!s) { SAT.box = null; setSource('sat', 'warn', 'SAT NONE IN VIEW'); composeBase(); renderSats(); renderHUD(); return; }
   const N = clamp(Math.round(SC.PX * 0.8), 384, 1024);
   try {
@@ -1304,7 +1330,7 @@ async function loadSat(g) {
     if (g !== GEN) return;
     SAT.time = time;
     box.canvas = phosphorize(box, 'ir');
-    SAT.box = box; SAT.t = Date.now(); s.status = 'ok';
+    SAT.box = box; SAT.bucket = Math.floor(Date.now() / 600000); s.status = 'ok';
     setSource('sat', 'ok', `SAT ${s.name}${time ? ' ' + fmtT(Date.parse(time)) : ''}`);
   } catch (e) {
     if (g !== GEN) return;
@@ -1318,7 +1344,7 @@ async function loadGpm(g) {
   try {
     const box = await wmsBox(GPM, VIEW, N, N, null);
     if (g !== GEN) return;
-    GPMX.box = box;
+    GPMX.box = box; GPMX.t = Date.now();
     GPM.status = 'ok';
   } catch (e) { if (g === GEN) GPM.status = 'down'; }
   composeBase(); renderSats();
@@ -1451,7 +1477,6 @@ async function loadForecast() {
     OFFLINE = false;
     renderNow(); renderHour(); renderDay(); renderAtmo(); renderStatus(); renderModels(); setRadarSource();
   } catch (e) {
-    OM.t = Date.now() - 12 * 60000;                       /* retry in ~3 min */
     if (key === locKey()) setSource('nwp', 'down', 'NWP OFFLINE');
     checkOffline();
   }
@@ -1504,29 +1529,38 @@ function checkOffline() {
   OFFLINE = ['radar', 'nwp'].every(k => SRC[k] && SRC[k].s === 'down');
   renderStatus();
 }
+const setHTML = (el, html) => { if (el._h !== html) { el._h = html; el.innerHTML = html; } };
+const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+/* minutes until a cell arrives, counted from now: a radar frame reaches us 5–15 minutes after its scan */
+function etaNow(c, e) {
+  if (!c || c.eta == null) return null;
+  return e && e === liveEntry() ? c.eta - (Date.now() / 1000 - e.time) / 60 : c.eta;
+}
 function renderTrack() {
   const body = $('#trackBody'), meta = $('#trackMeta'), e = curEntry();
-  if (!e) { body.innerHTML = `<tr><td colspan="7" class="empty">${RV.frames.length ? 'กำลังโหลดภาพเรดาร์…' : 'รอข้อมูลเรดาร์…'}</td></tr>`; meta.textContent = '≥30 dBZ'; return; }
-  if (!e.grid) { body.innerHTML = '<tr><td colspan="7" class="empty">เบราว์เซอร์นี้อ่านค่าพิกเซลเรดาร์ไม่ได้ จึงแสดงภาพอย่างเดียว</td></tr>'; meta.textContent = 'VIEW ONLY'; return; }
+  if (!e) { setHTML(body, `<tr><td colspan="7" class="empty">${RV.frames.length ? 'กำลังโหลดภาพเรดาร์…' : 'รอข้อมูลเรดาร์…'}</td></tr>`); setText(meta, '≥30 dBZ'); return; }
+  if (!e.grid) { setHTML(body, '<tr><td colspan="7" class="empty">เบราว์เซอร์นี้อ่านค่าพิกเซลเรดาร์ไม่ได้ จึงแสดงภาพอย่างเดียว</td></tr>'); setText(meta, 'VIEW ONLY'); return; }
   const cells = e.cells.slice(0, 8);
-  meta.textContent = `${e.cells.length} CELL${e.cells.length === 1 ? '' : 'S'} · ${(e.cover * 100).toFixed(1)}% WET`;
-  if (!cells.length) { body.innerHTML = `<tr><td colspan="7" class="empty">ไม่พบกลุ่มฝน ≥30 dBZ ในรัศมี ${VIEW.km} กม.</td></tr>`; return; }
-  body.innerHTML = cells.map((c, i) => {
+  setText(meta, `${e.cells.length} CELL${e.cells.length === 1 ? '' : 'S'} · ${(e.cover * 100).toFixed(1)}% WET`);
+  if (!cells.length) { setHTML(body, `<tr><td colspan="7" class="empty">ไม่พบกลุ่มฝน ≥30 dBZ ในรัศมี ${VIEW.km} กม.</td></tr>`); return; }
+  setHTML(body, cells.map((c, i) => {
     const cls = c === THREAT ? 'threat' : c.max >= 50 ? 'sev' : c.max >= 40 ? 'hot' : '';
     const mv = c.spd != null ? `${dir16(c.hdg)}${Math.round(c.spd)}${c.est ? '≈' : ''}` : '—';
-    const eta = c.eta == null ? '—' : c.eta < 1 ? 'NOW' : Math.round(c.eta) + '′';
+    const en = etaNow(c, e);
+    const eta = en == null || en < -10 ? '—' : en < 1 ? 'NOW' : Math.round(en) + '′';
     return `<tr class="${cls}"><td>C${pad(i + 1)}</td><td>${pad(Math.round(c.b) % 360, 3)}</td><td>${fmtKm(c.d)}</td><td>${c.max}</td><td>${rainRate(c.max).toFixed(rainRate(c.max) < 10 ? 1 : 0)}</td><td>${mv}</td><td>${eta}</td></tr>`;
-  }).join('');
+  }).join(''));
 }
 function renderStatus() {
   const p = $('#pStatus'), head = $('#statusHead'), ul = $('#statusList'), meta = $('#statusMeta');
   const e = liveEntry(), lines = [];
   let lvl = 0, h;
   const f = RV.frames[RV.frames.length - 1];
+  const te = etaNow(THREAT, e), threat = THREAT && te != null && te > -10;
   if (OFFLINE) {
     h = 'เชื่อมต่อแหล่งข้อมูลภายนอกไม่ได้'; lvl = 2;
     lines.push('เปิดหน้านี้ในเว็บเบราว์เซอร์ที่ต่ออินเทอร์เน็ต (Chrome, Safari, Edge) หรือโฮสต์บนเว็บไซต์');
-    lines.push('หน้าพรีวิวบางแบบบล็อกการดึงข้อมูลจากเว็บอื่น ระบบจะลองเชื่อมต่อใหม่ทุก 1–2 นาที');
+    lines.push('หน้าพรีวิวบางแบบบล็อกการดึงข้อมูลจากเว็บอื่น ระบบจะลองเชื่อมต่อใหม่ทุก 1 นาที');
   } else if (!e) {
     h = SRC.radar && SRC.radar.s === 'down' ? 'เชื่อมต่อเรดาร์ไม่ได้ กำลังลองใหม่' : 'กำลังโหลดเรดาร์…';
   } else if (!e.grid) {
@@ -1535,9 +1569,9 @@ function renderStatus() {
     const it = intensity(e.center); lvl = it.l;
     h = 'ฝนกำลังตกที่ตำแหน่งนี้';
     lines.push(`ความแรง${it.th} · ${e.center} dBZ ≈ ${rainRate(e.center).toFixed(1)} มม./ชม.`);
-  } else if (THREAT) {
+  } else if (threat) {
     const it = intensity(THREAT.max); lvl = Math.max(1, it.l);
-    h = `กลุ่มฝน${it.th}กำลังเข้ามา ถึงในอีก ~${Math.max(1, Math.round(THREAT.eta))} นาที`;
+    h = te < 1 ? `กลุ่มฝน${it.th}กำลังมาถึงตำแหน่งนี้` : `กลุ่มฝน${it.th}กำลังเข้ามา ถึงในอีก ~${Math.round(te)} นาที`;
     lines.push(`ห่าง ${fmtKm(THREAT.d)} กม. ${dirTh(THREAT.b)} · ${THREAT.max} dBZ ≈ ${rainRate(THREAT.max).toFixed(0)} มม./ชม.`);
     lines.push(`เคลื่อนไป${dirTh(THREAT.hdg)} ${Math.round(THREAT.spd)} กม./ชม.${THREAT.est ? ' (ประมาณจากลมรวม)' : ''}`);
   } else if (e.nearest) {
@@ -1569,13 +1603,15 @@ function renderStatus() {
     const c = d.current, w = wmo(c.weather_code);
     lines.push(`ตอนนี้ (โมเดล): ${w[1]} · ${Math.round(c.temperature_2m)}°C · ความชื้น ${Math.round(c.relative_humidity_2m)}%`);
   }
-  p.dataset.l = String(lvl);
-  head.textContent = h;
-  ul.innerHTML = lines.map(l => typeof l === 'string' ? `<li>${esc(l)}</li>` : `<li class="warn">${esc(l.t)}</li>`).join('');
-  meta.textContent = f ? `RADAR ${fmtT(f.time * 1000)}` : '—';
+  if (p.dataset.l !== String(lvl)) p.dataset.l = String(lvl);
+  setText(head, h);
+  setHTML(ul, lines.map(l => typeof l === 'string' ? `<li>${esc(l)}</li>` : `<li class="warn">${esc(l.t)}</li>`).join(''));
+  setText(meta, f ? `RADAR ${fmtT(f.time * 1000)}` : '—');
   const flag = $('#threatFlag');
-  if (THREAT && THREAT.eta != null && e && e.center < 15) { flag.hidden = false; flag.textContent = `INBOUND C${pad(e.cells.indexOf(THREAT) + 1)} · ETA ${Math.max(1, Math.round(THREAT.eta))} MIN`; }
-  else flag.hidden = true;
+  if (threat && e && e.grid && e.center < 15) {
+    const id = `C${pad(e.cells.indexOf(THREAT) + 1)}`;
+    flag.hidden = false; setText(flag, te < 1 ? `${id} ARRIVING NOW` : `INBOUND ${id} · ETA ${Math.round(te)} MIN`);
+  } else flag.hidden = true;
 }
 function renderNow() {
   const d = OM.data, box = $('#nowChart'), sum = $('#nowSum');
@@ -1914,7 +1950,33 @@ function layoutGrid() {
   con.style.setProperty('--cy', cy.toFixed(1) + 'px');
 }
 
-/* ================= clocks & schedule ================= */
+/* ================= update cycle & clocks ================= */
+/* every minute: radar and the scope's satellite are checked, and new pictures are downloaded only when a source has
+   published one. The forecast is fetched every 5 min (its values change every 15 min; Open-Meteo's free tier allows
+   10,000 requests a day) and its panels are redrawn every minute. Models (new runs every 6–12 h) and GPM every 30 min. */
+const CYCLE_MS = 60000;
+let nextCycle = Date.now() + CYCLE_MS, cycleBusy = false;
+async function updateNow() {
+  if (cycleBusy) return;
+  cycleBusy = true;
+  const now = Date.now(), g = GEN;
+  nextCycle = now + CYCLE_MS;
+  renderUpdateBtn();
+  const jobs = [refreshRadar(), loadSat(g, true)];
+  if (!OM.data || now - (OM.t || 0) > 5 * 60000 - 5000) jobs.push(loadForecast());
+  else { renderNow(); renderHour(); renderAtmo(); }
+  if (UI.layers.gpm && now - (GPMX.t || 0) > 30 * 60000) jobs.push(loadGpm(g));
+  if (now - (OM.mt || BOOT) > 30 * 60000) { OM.mt = now; jobs.push(loadModels()); }
+  if (now - (WD.irt || BOOT) > 10 * 60000) jobs.push(loadWorldIR());
+  try { await Promise.allSettled(jobs); } finally { cycleBusy = false; renderUpdateBtn(); if (VIEW) { renderTrack(); renderStatus(); } }
+}
+function renderUpdateBtn() {
+  const b = $('#barNext');
+  if (cycleBusy) { setText(b, '⟳ UPDATING…'); return; }
+  const left = Math.max(0, nextCycle - Date.now());
+  setText(b, `⟳ NEXT UPDATE ${Math.floor(left / 60000)}:${pad(Math.floor(left / 1000) % 60)}`);
+}
+$('#barNext').addEventListener('click', () => updateNow());
 function tick() {
   const now = Date.now(), d = new Date(now);
   $('#clkUtc').textContent = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
@@ -1923,14 +1985,12 @@ function tick() {
   const f = RV.frames[RV.frames.length - 1];
   if (f) {
     const next = (f.time + 600 + 150) * 1000 - now;
-    $('#barNext').textContent = next > 0 ? `NEXT SCAN ~${pad(Math.floor(next / 60000))}:${pad(Math.floor(next / 1000) % 60)}` : 'NEXT SCAN DUE';
-    if (d.getUTCSeconds() % 15 === 0) { renderHUD(); setRadarSource(); }
+    setText($('#barScan'), next > 0 ? `NEXT RADAR ~${pad(Math.floor(next / 60000))}:${pad(Math.floor(next / 1000) % 60)}` : 'NEXT RADAR DUE');
   }
-  if (now - RV.lastCheck > (f && now > (f.time + 660) * 1000 ? 60000 : 120000)) refreshRadar();
-  if (OM.t && now - OM.t > 15 * 60000) { OM.t = now; loadForecast(); }
-  if (now - (SAT.t || BOOT) > 10 * 60000) { SAT.t = now; loadSat(GEN); if (UI.layers.gpm) loadGpm(GEN); }
-  if (now - (OM.mt || BOOT) > 60 * 60000) { OM.mt = now; loadModels(); }
-  if (now - (WD.irt || BOOT) > 20 * 60000) { WD.irt = now; loadWorldIR(); }
+  if (d.getUTCSeconds() % 15 === 0 && VIEW) { renderHUD(); setRadarSource(); renderTrack(); renderStatus(); }
+  renderUpdateBtn();
+  if (now >= nextCycle) updateNow();
+  else if (f && now > (f.time + 660) * 1000 && now - RV.lastCheck > 60000) refreshRadar();   /* a scan is due: look every minute */
 }
 let rsT = 0;
 function onResize() {
@@ -1946,8 +2006,7 @@ if ('ResizeObserver' in window) new ResizeObserver(onResize).observe(SC.cv);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     if (!painting) requestAnimationFrame(paint);
-    if (Date.now() - RV.lastCheck > 60000) refreshRadar();
-    if (OM.t && Date.now() - OM.t > 10 * 60000) { OM.t = Date.now(); loadForecast(); }
+    if (Date.now() >= nextCycle - 5000) updateNow();
   }
 });
 
