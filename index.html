@@ -211,6 +211,23 @@ tr.active td{color:var(--glow)}
 /* world inset */
 .p-world canvas{display:block;width:100%;aspect-ratio:1.9/1;max-width:100%;cursor:crosshair;touch-action:manipulation;background:#000a03}
 
+/* forecast sweep */
+.fline{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 0 6px}
+.fline b{font:600 15px/1.1 var(--font-display);letter-spacing:.06em;color:var(--amber);text-shadow:0 0 10px rgba(255,194,61,.35)}
+.fline .ft{color:var(--glow)}
+.fline .fmot{margin-left:auto;color:var(--dim);font-size:10.5px}
+.fscope{position:relative;width:100%;max-width:520px;margin:0 auto;aspect-ratio:1/1}
+.fscope canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.fscope::after{content:"";position:absolute;inset:9%;border-radius:50%;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.2) 0 1px,transparent 1px 3px)}
+.fmsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);margin:0;width:max-content;max-width:72%;text-align:center;color:var(--dim);font:12px/1.45 var(--font-display);background:rgba(0,8,3,.85);padding:6px 10px}
+.fsteps{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:6px}
+.fsteps span{text-align:center;font-size:9.5px;color:var(--dim);border-top:2px solid var(--trace);padding-top:3px}
+.fsteps span.on{color:var(--glow);border-top-color:var(--amber)}
+.fthreat{margin:7px 0 0;font:12.5px/1.45 var(--font-display);color:var(--phosphor)}
+.fthreat.warn{color:var(--amber)}
+.fsrc{margin:5px 0 0;font-size:10.5px;line-height:1.5;color:var(--dim)}
+.fsrc b{font-weight:400;color:var(--phosphor)}
+
 /* status bar */
 .bar{grid-area:bar;display:flex;flex-wrap:wrap;align-items:center;gap:5px 18px;padding-top:8px;border-top:1px solid var(--trace);font-size:10.5px;color:var(--dim);background:rgba(0,3,2,.85)}
 .src{display:inline-flex;align-items:center;gap:6px;letter-spacing:.05em}
@@ -233,9 +250,9 @@ tr.active td{color:var(--glow)}
   .top,.center,.bar,.col.left,.col.right{grid-area:auto}
   .col{display:contents}
   .top,.center,.bar,.p-status{grid-column:1/-1}
-  .top{order:1}.p-status{order:3}.center{order:4}
-  .p-read{order:5}.p-now{order:6}.p-track{order:7}.p-hour{order:8}.p-day{order:9}.p-atmo{order:10}.p-models{order:11}.p-world{order:12}.p-sats{order:13}.bar{order:14}
-  .p-now,.p-hour,.p-track{grid-column:1/-1}
+  .top{order:1}.p-status{order:3}.center{order:4}.p-fcst{order:5}
+  .p-read{order:6}.p-now{order:7}.p-track{order:8}.p-hour{order:9}.p-day{order:10}.p-atmo{order:11}.p-models{order:12}.p-world{order:13}.p-sats{order:14}.bar{order:15}
+  .p-now,.p-hour,.p-track,.p-fcst{grid-column:1/-1}
   .scope{width:min(100%,720px)}
   .clocks{margin-left:0}
 }
@@ -278,6 +295,19 @@ tr.active td{color:var(--glow)}
   </header>
 
   <aside class="col left">
+    <section class="panel p-fcst" aria-labelledby="hFcst">
+      <h2 class="ph" id="hFcst"><b>FORECAST SWEEP · จำลองพายุ</b><small>+60 MIN</small></h2>
+      <div class="fline"><b id="fStep">NOW</b><span class="ft" id="fTime">--:--</span><span class="fmot" id="fMotion">—</span></div>
+      <div class="fscope">
+        <canvas id="fscope" aria-label="Simulated storm movement over the next 60 minutes"></canvas>
+        <p class="fmsg" id="fMsg">รอภาพเรดาร์…</p>
+      </div>
+      <div class="fsteps" id="fSteps" aria-hidden="true"><span class="on">NOW</span><span>+10</span><span>+20</span><span>+30</span><span>+40</span><span>+50</span><span>+60</span></div>
+      <p class="fthreat" id="fThreat" aria-live="polite">—</p>
+      <p class="fsrc" id="fSrc">—</p>
+      <p class="note">ทิศการเคลื่อนที่คำนวณจากภาพเรดาร์รวมทุกสถานี (เทียบภาพล่าสุดกับภาพก่อนหน้า) และการเคลื่อนที่ของเมฆจากดาวเทียมทุกดวงที่มองเห็นพื้นที่นี้ ลูกศรจางคือทิศที่คำนวณได้ เส้นประคือทางที่กลุ่มฝนจะไป จุดคือทุก 10 นาที ไม่รวมฝนที่จะก่อตัวหรือสลายใหม่ จึงไม่ใช่ภาพเรดาร์จริง</p>
+    </section>
+
     <section class="panel p-track" aria-labelledby="hTrack">
       <h2 class="ph" id="hTrack"><b>CELL TRACK · กลุ่มฝน</b><small id="trackMeta">≥30 dBZ</small></h2>
       <div class="tw"><table>
@@ -792,8 +822,9 @@ function resizeScope() {
   buildMask(); buildBeam(); buildStatic();
   return true;
 }
-function buildMask() {
-  const { PX, C } = SC, x = L.mask.getContext('2d');
+function buildMask() { drawMaskTo(L.mask, SC.PX, SC.C); }
+function drawMaskTo(cv, PX, C) {
+  const x = cv.getContext('2d');
   const id = x.createImageData(PX, PX), u = new Uint32Array(id.data.buffer);
   const FLOOR = 0.3, DECAY = 2.3;
   for (let y = 0; y < PX; y++) {
@@ -806,8 +837,9 @@ function buildMask() {
   }
   x.putImageData(id, 0, 0);
 }
-function buildBeam() {
-  const { PX, C, RR } = SC, x = L.beam.getContext('2d');
+function buildBeam() { drawBeamTo(L.beam, SC.PX, SC.C, SC.RR, SC.s); }
+function drawBeamTo(cv, PX, C, RR, s, rgb = [59, 255, 111], line = 'rgba(214,255,224,.95)', glow = '#3bff6f') {
+  const x = cv.getContext('2d');
   const id = x.createImageData(PX, PX), u = new Uint32Array(id.data.buffer);
   for (let y = 0; y < PX; y++) {
     const dy = y + 0.5 - C;
@@ -817,17 +849,21 @@ function buildBeam() {
       let a = -Math.atan2(dy, dx); if (a < 0) a += TAU;
       if (a > 1.0) continue;
       const al = 0.5 * Math.exp(-a / 0.17) * (0.3 + 0.7 * r / RR);
-      u[y * PX + xx] = ((((al * 255) | 0) << 24) | (111 << 16) | (255 << 8) | 59) >>> 0;
+      u[y * PX + xx] = ((((al * 255) | 0) << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0]) >>> 0;
     }
   }
   x.putImageData(id, 0, 0);
   x.save(); x.translate(C, C);
-  x.strokeStyle = 'rgba(214,255,224,.95)'; x.lineWidth = 1.6 * SC.s; x.shadowColor = '#3bff6f'; x.shadowBlur = 12 * SC.s;
+  x.strokeStyle = line; x.lineWidth = 1.6 * s; x.shadowColor = glow; x.shadowBlur = 12 * s;
   x.beginPath(); x.moveTo(0, 0); x.lineTo(RR, 0); x.stroke();
   x.restore();
 }
 function buildStatic() {
-  const { PX, C, RR, s } = SC, x = L.stat.getContext('2d');
+  drawStaticTo(L.stat, SC.PX, SC.C, SC.RR, SC.s, 30, '#3bff6f');
+  if (FS.PX) drawStaticTo(FS.L.stat, FS.PX, FS.C, FS.RR, FS.s, 90, '#e0a93a');
+}
+function drawStaticTo(cv, PX, C, RR, s, labStep, rim) {
+  const x = cv.getContext('2d');
   x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, PX, PX);
   x.save(); x.translate(C, C);
   x.lineWidth = Math.max(1, s * 0.8);
@@ -837,7 +873,7 @@ function buildStatic() {
   x.beginPath();
   for (let d = 0; d < 360; d += 30) { const a = (d - 90) * D2R; x.moveTo(Math.cos(a) * RR * 0.06, Math.sin(a) * RR * 0.06); x.lineTo(Math.cos(a) * RR, Math.sin(a) * RR); }
   x.stroke();
-  x.save(); x.shadowColor = 'rgba(59,255,111,.9)'; x.shadowBlur = 12 * s; x.lineWidth = 2 * s; x.strokeStyle = '#3bff6f';
+  x.save(); x.shadowColor = rim; x.shadowBlur = 12 * s; x.lineWidth = 2 * s; x.strokeStyle = rim;
   x.beginPath(); x.arc(0, 0, RR, 0, TAU); x.stroke(); x.restore();
   x.strokeStyle = '#2e9e50'; x.lineWidth = Math.max(1, s * 0.9);
   x.beginPath();
@@ -848,7 +884,7 @@ function buildStatic() {
   x.stroke();
   x.font = `${Math.round(10.5 * s)}px "Share Tech Mono", ui-monospace, monospace`;
   x.textAlign = 'center'; x.textBaseline = 'middle';
-  for (let d = 0; d < 360; d += 30) {
+  for (let d = 0; d < 360; d += labStep) {
     const a = (d - 90) * D2R;
     x.fillStyle = d === 0 ? '#c6ffd4' : '#2e9e50';
     x.fillText(String(d).padStart(3, '0'), Math.cos(a) * (RR + 21 * s), Math.sin(a) * (RR + 21 * s));
@@ -865,9 +901,9 @@ function buildStatic() {
   x.beginPath(); x.moveTo(-7 * s, 0); x.lineTo(-2.5 * s, 0); x.moveTo(2.5 * s, 0); x.lineTo(7 * s, 0); x.moveTo(0, -7 * s); x.lineTo(0, -2.5 * s); x.moveTo(0, 2.5 * s); x.lineTo(0, 7 * s); x.stroke();
   x.restore();
 }
-function boxRect(box) {
-  const k = SC.RR / VIEW.H;
-  return [SC.C + (box.bx0 - VIEW.X0) * k, SC.C - (box.by1 - VIEW.Y0) * k, box.W * box.mpp * k, box.H * box.mpp * k];
+function boxRect(box, G = SC) {
+  const k = G.RR / VIEW.H;
+  return [G.C + (box.bx0 - VIEW.X0) * k, G.C - (box.by1 - VIEW.Y0) * k, box.W * box.mpp * k, box.H * box.mpp * k];
 }
 function drawBox(x, box, canvas, alpha, op) {
   const r = boxRect(box);
@@ -1036,8 +1072,416 @@ function paint(t) {
     ctx.drawImage(L.stat, 0, 0);
     if (t - lastRO > 120) { lastRO = t; $('#roBeam').textContent = beam.toFixed(1).padStart(5, '0') + '°'; }
   }
+  if (VIEW) paintFS(t);
   requestAnimationFrame(paint);
 }
+
+/* ================= motion analysis =================
+   Every radar: the composite already merges every station, so the flow between its two newest pictures covers all of
+   them, light rain included. Every satellite: each geostationary satellite that sees the area (elevation >= 15 deg) gives
+   cloud-motion vectors from two IR pictures 20-30 minutes apart. Block matching (sum of absolute differences) with a
+   sub-pixel fit; vectors that disagree with their neighbours are dropped. */
+const MOT = { at: 0, gen: -1, busy: false, sat: [] };
+const isoT = ms => new Date(ms).toISOString().slice(0, 19) + 'Z';
+const median = a => { const q = a.slice().sort((u, v) => u - v); return q.length ? q[q.length >> 1] : 0; };
+async function probeSatTime(s, box, step) {
+  if (s.wms === GIBS_WMS && s.tc && Date.now() - s.tc.at < 5 * 60000) return s.tc.t;
+  const ms = step * 60000;
+  let t = Math.floor((Date.now() - 10 * 60000) / ms) * ms;
+  for (let k = 0; k < 8; k++, t -= ms) {
+    try {
+      const bx = await wmsBox(s, box, 40, 40, isoT(t), 15000);
+      if (!bx.clean) return 'nopixel';
+      const d = bx.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, 40, 40).data;
+      let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      if (n > 320) return isoT(t);
+    } catch (e) { /* try the slot before */ }
+  }
+  return null;
+}
+function irField(bx) {
+  const { W, H } = bx, d = bx.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+  const f = new Float32Array(W * H);
+  for (let p = 0, i = 0; p < W * H; p++, i += 4) {
+    if (!d[i + 3]) { f[p] = -1; continue; }
+    const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+    f[p] = clamp(((mx - mn > 70 ? 255 : mx) - 60) / 195, 0, 1);
+  }
+  return f;
+}
+/* where did each block of B come from in A: returns block centre and displacement (B = A shifted by d) */
+function blockMatch(A, B, W, H, bs, stride, S, minMean) {
+  const out = [], side = 2 * S + 1, sad = new Float32Array(side * side);
+  for (let by = 0; by + bs <= H; by += stride) for (let bx = 0; bx + bs <= W; bx += stride) {
+    let sum = 0, sum2 = 0, bad = false;
+    for (let y = by; y < by + bs && !bad; y++) for (let x = bx; x < bx + bs; x++) {
+      const v = B[y * W + x]; if (v < 0) { bad = true; break; } sum += v; sum2 += v * v;
+    }
+    const nn = bs * bs, mean = sum / nn;
+    if (bad || mean < minMean || sum2 / nn - mean * mean < 2e-4) continue;
+    let best = Infinity, bdx = 0, bdy = 0, tot = 0, cnt = 0;
+    sad.fill(Infinity);
+    for (let dy = -S; dy <= S; dy++) {
+      const ay = by - dy; if (ay < 0 || ay + bs > H) continue;
+      for (let dx = -S; dx <= S; dx++) {
+        const ax = bx - dx; if (ax < 0 || ax + bs > W) continue;
+        let e = 0;
+        for (let y = 0; y < bs; y++) {
+          const ob = (by + y) * W + bx, oa = (ay + y) * W + ax;
+          for (let x = 0; x < bs; x++) { const va = A[oa + x]; e += Math.abs(B[ob + x] - (va < 0 ? 0 : va)); }
+        }
+        sad[(dy + S) * side + dx + S] = e; tot += e; cnt++;
+        if (e < best) { best = e; bdx = dx; bdy = dy; }
+      }
+    }
+    if (cnt < 9 || Math.abs(bdx) >= S || Math.abs(bdy) >= S) continue;
+    const q = 1 - best / (tot / cnt);
+    if (q < 0.25) continue;
+    const at = (dx, dy) => sad[(dy + S) * side + dx + S];
+    const fit = (l, c, r) => { const den = l - 2 * c + r; return den > 0 && isFinite(l) && isFinite(r) ? clamp(0.5 * (l - r) / den, -0.5, 0.5) : 0; };
+    out.push({ x: bx + bs / 2, y: by + bs / 2, dx: bdx + fit(at(bdx - 1, bdy), best, at(bdx + 1, bdy)), dy: bdy + fit(at(bdx, bdy - 1), best, at(bdx, bdy + 1)), q });
+  }
+  return out;
+}
+function cleanVectors(vs) {
+  if (vs.length < 4) return vs;
+  return vs.filter(v => {
+    const nb = [];
+    for (const u of vs) if (u !== v) { const d = hav(v.lat, v.lon, u.lat, u.lon); if (d < 150) nb.push([d, u]); }
+    if (nb.length < 3) return true;
+    nb.sort((a, b) => a[0] - b[0]);
+    const k = nb.slice(0, 6).map(o => o[1]);
+    return Math.hypot(v.ve - median(k.map(u => u.ve)), v.vn - median(k.map(u => u.vn))) <= 25;
+  });
+}
+function radarFlow(p, e) {
+  const { W, H, mpp, bx0, by1 } = e.box;
+  const gap = (e.time - p.time) / 60;
+  if (gap <= 0 || gap > 30 || p.box.W !== W || p.box.H !== H) return [];
+  const f = Math.max(1, Math.ceil(Math.max(W, H) / 180)), w = Math.floor(W / f), h = Math.floor(H / f);
+  const A = new Float32Array(w * h), B = new Float32Array(w * h), n2 = f * f;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let sa = 0, sb = 0;
+    for (let yy = 0; yy < f; yy++) {
+      const o = (y * f + yy) * W + x * f;
+      for (let xx = 0; xx < f; xx++) { const va = p.grid[o + xx], vb = e.grid[o + xx]; if (va > 5) sa += (va - 5) / 50; if (vb > 5) sb += (vb - 5) / 50; }
+    }
+    A[y * w + x] = sa / n2; B[y * w + x] = sb / n2;
+  }
+  const kmpp = f * mpp * Math.cos(VIEW.lat * D2R) / 1000;
+  const S = Math.min(24, Math.ceil(90 * gap / 60 / kmpp) + 1);
+  return cleanVectors(blockMatch(A, B, w, h, 12, 6, S, 0.03).map(v => ({
+    lat: latOf(by1 - v.y * f * mpp), lon: lonOf(bx0 + v.x * f * mpp),
+    ve: v.dx * kmpp / gap * 60, vn: -v.dy * kmpp / gap * 60, w: v.q, r0: 30
+  })));
+}
+async function satMotion(g) {
+  const R = Math.max(VIEW.km, 200), box = makeView(VIEW.lat, VIEW.lon, R);
+  const N = R >= 400 ? 192 : 128, kmpp = 2 * R / N;
+  const out = [];
+  for (const s of SATS) {
+    if (satElev(s, VIEW.lat, VIEW.lon) < 15) continue;
+    const step = s.layer.startsWith('msg_') ? 15 : 10, gap = 2 * step, rec = { sat: s, n: 0, why: '' };
+    out.push(rec);
+    try {
+      const t1 = await probeSatTime(s, box, step);
+      if (g !== GEN) return;
+      if (t1 === 'nopixel') { rec.why = 'pixel'; continue; }
+      if (!t1) { rec.why = 'time'; continue; }
+      const [a, b] = await Promise.all([wmsBox(s, box, N, N, isoT(Date.parse(t1) - gap * 60000), 30000), wmsBox(s, box, N, N, t1, 30000)]);
+      if (g !== GEN) return;
+      if (!a.clean || !b.clean) { rec.why = 'pixel'; continue; }
+      const S = Math.min(16, Math.ceil(110 * gap / 60 / kmpp) + 1);
+      rec.vecs = cleanVectors(blockMatch(irField(a), irField(b), N, N, 12, 8, S, 0.08).map(v => ({
+        lat: latOf(box.y1 - v.y * (box.y1 - box.y0) / N), lon: lonOf(box.x0 + v.x * (box.x1 - box.x0) / N),
+        ve: v.dx * kmpp / gap * 60, vn: -v.dy * kmpp / gap * 60, w: 0.5 * v.q, r0: 45
+      })));
+      rec.n = rec.vecs.length; rec.t = t1;
+    } catch (e) { rec.why = 'load'; }
+  }
+  MOT.sat = out; MOT.at = Date.now(); MOT.gen = g;
+}
+async function updateMotion() {
+  const e = liveEntry();
+  if (e && e.grid) {
+    const pf = RV.frames[RV.frames.length - 2], pe = pf && RV.data.get(pf.time);
+    if (pe && pe.grid && e.flowPrev !== pe.time) { e.flow = radarFlow(pe, e); e.flowPrev = pe.time; }
+  }
+  scheduleForecast();
+  if (!MOT.busy && VIEW && (MOT.gen !== GEN || Date.now() - MOT.at > 10 * 60000)) {
+    MOT.busy = true;
+    try { await satMotion(GEN); } catch (err) { /* keep the last result */ } finally { MOT.busy = false; }
+    scheduleForecast();
+  }
+}
+
+/* ================= forecast sweep: simulated storm movement =================
+   The newest radar picture is moved along a motion field: each tracked rain cell's own velocity near it, the median
+   of those velocities (or the 700 hPa model wind when nothing could be tracked) elsewhere. Steps: NOW, +10 … +60 min.
+   Each revolution of the amber sweep paints the next step, so the scope plays the next hour over and over. */
+const FS = { cv: $('#fscope'), ctx: null, PX: 0, C: 0, RR: 0, s: 1, L: {}, period: 3.5, visible: true };
+FS.ctx = FS.cv.getContext('2d');
+const FC_N = 7, FC_DT = 10;
+const FC = { steps: [], cv: [], tracks: [], threat: null, k: -1, lead0: 0, t0: 0, img: null, tmp: null };
+let fcTimer = 0;
+function scheduleForecast() { clearTimeout(fcTimer); fcTimer = setTimeout(buildForecast, 250); }
+function resizeFScope() {
+  const r = FS.cv.getBoundingClientRect();
+  if (r.width < 60) return false;
+  const css = Math.round(r.width), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const PX = Math.min(720, Math.round(css * dpr));
+  if (PX === FS.PX) return false;
+  FS.PX = PX; FS.s = PX / css; FS.C = PX / 2; FS.RR = FS.C - 30 * FS.s;
+  FS.cv.width = PX; FS.cv.height = PX;
+  for (const k of ['base', 'stat', 'mask', 'beam', 'ta', 'tb']) FS.L[k] = mkCanvas(PX, PX);
+  FC.cv = []; for (let i = 0; i < FC_N; i++) FC.cv.push(mkCanvas(PX, PX));
+  FC.steps = [];
+  drawMaskTo(FS.L.mask, PX, FS.C);
+  drawBeamTo(FS.L.beam, PX, FS.C, FS.RR, FS.s, [255, 194, 61], 'rgba(255,236,190,.95)', '#ffc23d');
+  if (VIEW) drawStaticTo(FS.L.stat, PX, FS.C, FS.RR, FS.s, 90, '#e0a93a');
+  composeFBase(); scheduleForecast();
+  return true;
+}
+function composeFBase() {
+  if (!VIEW || !FS.PX) return;
+  const { PX, C, RR } = FS, x = FS.L.base.getContext('2d');
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  x.clearRect(0, 0, PX, PX);
+  x.save(); x.beginPath(); x.arc(C, C, RR, 0, TAU); x.clip();
+  const g = x.createRadialGradient(C, C, RR * 0.05, C, C, RR);
+  g.addColorStop(0, '#0b1605'); g.addColorStop(0.75, '#050c03'); g.addColorStop(1, '#030701');
+  x.fillStyle = g; x.fillRect(0, 0, PX, PX);
+  drawCoast(x, FS);
+  x.restore();
+}
+/* storm motion from the model: wind at 700 hPa (meteorological "from" direction) turned into a velocity */
+function steeringWind() {
+  const d = OM.data;
+  if (!d || !d.hourly || !d.hourly.wind_speed_700hPa || !d.hourly.wind_direction_700hPa) return null;
+  const i = omIndex(d.hourly.time, Date.now() / 1000); if (i < 0) return null;
+  const sp = d.hourly.wind_speed_700hPa[i], dir = d.hourly.wind_direction_700hPa[i];
+  if (sp == null || dir == null) return null;
+  return { ve: -sp * Math.sin(dir * D2R), vn: -sp * Math.cos(dir * D2R) };
+}
+function buildForecast() {
+  FC.steps = []; FC.tracks = []; FC.threat = null; FC.k = -1;
+  const e = liveEntry();
+  if (!FS.PX || !VIEW) return;
+  if (!e || !e.grid || !e.cells) { FC.info = { why: e && !e.grid ? 'nopixel' : 'wait' }; return renderFcInfo(); }
+  const { W, H, mpp, bx0, by1 } = e.box, g = e.grid;
+  const kmpp = mpp * Math.cos(VIEW.lat * D2R) / 1000;
+  const tracked = e.cells.filter(c => c.ve != null && !c.est);
+  const flow = e.flow || [], sats = MOT.gen === GEN ? MOT.sat : [];
+  const satVecs = [].concat(...sats.map(r => r.vecs || []));
+  /* background motion: median of the radar measurements, else of the satellites, else the model wind */
+  const radarSet = tracked.map(c => ({ ve: c.ve, vn: c.vn })).concat(flow);
+  const base = radarSet.length ? radarSet : satVecs;
+  const model = steeringWind();
+  const P0 = base.length ? { ve: median(base.map(v => v.ve)), vn: median(base.map(v => v.vn)) } : model;
+  const prior = P0 || { ve: 0, vn: 0 };
+  /* motion field on an 8-pixel grid (px per minute; x east, y down), cached until a source changes */
+  const CS = 8, cw = Math.ceil(W / CS), ch = Math.ceil(H / CS);
+  const vkey = [e.time, e.flowPrev, MOT.at, GEN, tracked.length, model ? Math.round(model.ve) + ',' + Math.round(model.vn) : ''].join('|');
+  if (!FC.vf || FC.vf.key !== vkey) {
+    const vx = new Float32Array(cw * ch), vy = new Float32Array(cw * ch);
+    /* radar (tracked cells + composite flow) rules near echoes; satellites fill the rest; the model/median underneath */
+    const toPx = v => ({ x: (mercX(v.lon) - bx0) / mpp, y: (by1 - mercY(v.lat)) / mpp, ve: v.ve, vn: v.vn });
+    const rpts = tracked.map(c => Object.assign(toPx(c), { w: 4, r0: 20 })).concat(flow.map(v => Object.assign(toPx(v), { w: 1.5 * v.w, r0: 25 })));
+    const spts = satVecs.map(v => Object.assign(toPx(v), { w: v.w, r0: v.r0 }));
+    const RP = 150, K = 7e-4;
+    for (let j = 0; j < ch; j++) for (let i = 0; i < cw; i++) {
+      const px = (i + 0.5) * CS, py = (j + 0.5) * CS;
+      let rw = 0, re = 0, rn = 0, sw = 1 / (RP * RP), se = prior.ve * sw, sn = prior.vn * sw;
+      for (const q of rpts) {
+        const dk = Math.hypot(px - q.x, py - q.y) * kmpp, w = q.w / (dk * dk + q.r0 * q.r0);
+        rw += w; re += q.ve * w; rn += q.vn * w;
+      }
+      for (const q of spts) {
+        const dk = Math.hypot(px - q.x, py - q.y) * kmpp, w = q.w / (dk * dk + q.r0 * q.r0);
+        sw += w; se += q.ve * w; sn += q.vn * w;
+      }
+      const a = rw / (rw + K), ve = a * (rw ? re / rw : 0) + (1 - a) * se / sw, vn = a * (rw ? rn / rw : 0) + (1 - a) * sn / sw;
+      vx[j * cw + i] = ve / 60 / kmpp;
+      vy[j * cw + i] = -vn / 60 / kmpp;
+    }
+    FC.vf = { key: vkey, vx, vy, cw, ch, CS, bx0, by1, mpp };
+  }
+  const { vx, vy } = FC.vf;
+  /* advect the newest radar grid: NOW (minutes since the scan) and every 10 minutes up to +60 */
+  const lead0 = Math.max(0, (Date.now() / 1000 - e.time) / 60);
+  FC.lead0 = lead0; FC.t0 = e.time;
+  if (!FC.img || FC.img.width !== W || FC.img.height !== H) { FC.img = new ImageData(W, H); FC.tmp = mkCanvas(W, H); }
+  const u = new Uint32Array(FC.img.data.buffer), tctx = FC.tmp.getContext('2d');
+  const rc = boxRect(e.box, FS);
+  for (let k = 0; k < FC_N; k++) {
+    const t = lead0 + k * FC_DT;
+    for (let y = 0; y < H; y++) {
+      const row = ((y / CS) | 0) * cw, o = y * W;
+      for (let x = 0; x < W; x++) {
+        const ci = row + ((x / CS) | 0);
+        const sx = Math.round(x - vx[ci] * t), sy = Math.round(y - vy[ci] * t);
+        u[o + x] = sx >= 0 && sy >= 0 && sx < W && sy < H ? PLUT[g[sy * W + sx] + 128] : 0;
+      }
+    }
+    tctx.putImageData(FC.img, 0, 0);
+    const out = FC.cv[k].getContext('2d');
+    out.setTransform(1, 0, 0, 1, 0, 0); out.clearRect(0, 0, FS.PX, FS.PX);
+    out.save(); out.beginPath(); out.arc(FS.C, FS.C, FS.RR, 0, TAU); out.clip();
+    out.imageSmoothingEnabled = true;
+    out.drawImage(FC.tmp, rc[0], rc[1], rc[2], rc[3]);
+    out.restore();
+  }
+  FC.steps = FC.cv.slice(0, FC_N);
+  /* tracks: where each cell was at the scan, then NOW … +60 */
+  const times = [0]; for (let k = 0; k < FC_N; k++) times.push(lead0 + k * FC_DT);
+  let thr = null, thrEta = Infinity;
+  for (const c of e.cells) {
+    const en = etaNow(c, e);
+    if (en != null && en > -10 && en <= FC_N * FC_DT - FC_DT && en < thrEta) { thr = c; thrEta = en; }
+  }
+  const order = e.cells.map((c, i) => ({ c, i })).filter(o => o.c.ve != null)
+    .sort((a, b) => (b.c === thr) - (a.c === thr) || b.c.max - a.c.max);
+  order.forEach((o, n) => {
+    const c = o.c, cl = Math.cos(c.lat * D2R);
+    const pts = times.map(t => [c.lat + c.vn * t / 60 / 110.57, c.lon + c.ve * t / 60 / (111.32 * cl)]);
+    const col = c === thr ? '255,194,61' : c.max >= 50 ? '255,75,58' : c.max >= 40 ? '198,255,212' : '59,255,111';
+    FC.tracks.push({ pts, col, threat: c === thr, label: n < 6 ? `C${pad(o.i + 1)}` : '' });
+  });
+  FC.threat = thr ? { id: `C${pad(e.cells.indexOf(thr) + 1)}`, max: thr.max, eta: thrEta } : null;
+  const cci = Math.floor((by1 - VIEW.Y0) / mpp / CS) * cw + Math.floor((VIEW.X0 - bx0) / mpp / CS);
+  const here = cci >= 0 && cci < vx.length ? { ve: vx[cci] * 60 * kmpp, vn: -vy[cci] * 60 * kmpp } : P0;
+  FC.info = { why: '', v: here, cells: tracked.length, flow: flow.length, sats, model: !base.length && !satVecs.length && !!model, modelAvail: !!model };
+  renderFcInfo();
+}
+function renderFcInfo() {
+  const msg = $('#fMsg'), mot = $('#fMotion'), th = $('#fThreat'), i = FC.info || { why: 'wait' };
+  if (i.why) {
+    msg.hidden = false;
+    setText(msg, i.why === 'nopixel' ? 'เบราว์เซอร์นี้อ่านค่าพิกเซลเรดาร์ไม่ได้ จึงจำลองไม่ได้' : 'รอภาพเรดาร์…');
+    setText(mot, '—'); setText(th, '—'); th.classList.remove('warn'); setHTML($('#fSrc'), '—');
+    return;
+  }
+  msg.hidden = true;
+  if (i.v) {
+    const sp = Math.hypot(i.v.ve, i.v.vn), hd = (Math.atan2(i.v.ve, i.v.vn) * R2D + 360) % 360;
+    setText(mot, `HERE ${dir16(hd)} ${Math.round(sp)} KM/H`);
+  } else setText(mot, 'NO MOTION DATA');
+  const parts = [`เรดาร์รวมทุกสถานี <b>${i.flow}</b> จุด` + (i.cells ? ` + กลุ่มฝน <b>${i.cells}</b>` : '')];
+  for (const r of i.sats) parts.push(`${esc(r.sat.name)} ` + (r.n ? `<b>${r.n}</b> จุด` : r.why === 'pixel' ? 'อ่านค่าไม่ได้' : r.why === 'time' ? 'ไม่มีภาพล่าสุด' : r.why === 'load' ? 'โหลดไม่ได้' : '—'));
+  if (MOT.busy && !i.sats.length) parts.push('กำลังคำนวณจากดาวเทียม…');
+  if (i.modelAvail) parts.push(i.model ? 'ลมโมเดล 700 hPa <b>ใช้แทน</b>' : 'ลมโมเดล 700 hPa (สำรอง)');
+  setHTML($('#fSrc'), 'ใช้คำนวณ: ' + parts.join(' · '));
+  if (FC.threat) {
+    const t = FC.threat;
+    th.classList.add('warn');
+    setText(th, t.eta < 1 ? `${t.id} (${t.max} dBZ) กำลังมาถึงตำแหน่งของคุณ`
+      : `${t.id} (${t.max} dBZ) คาดว่าจะถึงตำแหน่งของคุณราว ${fmtT(Date.now() + t.eta * 60000)} · อีก ~${Math.round(t.eta)} นาที`);
+  } else {
+    th.classList.remove('warn');
+    setText(th, FC.tracks.length ? 'ใน 1 ชั่วโมงข้างหน้า ยังไม่มีกลุ่มฝนที่คาดว่าจะผ่านตำแหน่งของคุณ'
+      : i.v ? 'ไม่มีกลุ่มฝน ≥30 dBZ ให้ติดตาม ฝนที่เห็นเลื่อนตามลมโดยรวม' : 'ยังไม่มีข้อมูลการเคลื่อนที่ ภาพจึงยังไม่ขยับ');
+  }
+}
+function renderFcStep(k) {
+  setText($('#fStep'), k === 0 ? 'NOW' : `+${k * FC_DT} MIN`);
+  setText($('#fTime'), FC.t0 ? fmtT((FC.t0 + (FC.lead0 + k * FC_DT) * 60) * 1000) : '--:--');
+  [...$('#fSteps').children].forEach((el, i) => el.classList.toggle('on', i === k));
+}
+function fsMasked(x, src, layer, ca, a0, a1) {
+  const { C, RR } = FS, tx = layer.getContext('2d');
+  tx.setTransform(1, 0, 0, 1, 0, 0); tx.globalCompositeOperation = 'copy'; tx.drawImage(src, 0, 0);
+  tx.globalCompositeOperation = 'destination-in'; tx.translate(C, C); tx.rotate(ca); tx.drawImage(FS.L.mask, -C, -C);
+  tx.setTransform(1, 0, 0, 1, 0, 0); tx.globalCompositeOperation = 'source-over';
+  x.save(); x.beginPath(); x.moveTo(C, C); x.arc(C, C, RR + 2, a0, a1, false); x.closePath(); x.clip();
+  x.drawImage(layer, 0, 0); x.restore();
+}
+function drawTracks(x, k, beamDeg) {
+  const { C, RR, s } = FS, kk = RR / VIEW.H;
+  const P = q => [C + (mercX(q[1]) - VIEW.X0) * kk, C - (mercY(q[0]) - VIEW.Y0) * kk];
+  x.save(); x.beginPath(); x.arc(C, C, RR, 0, TAU); x.clip();
+  x.lineCap = 'round'; x.lineJoin = 'round'; x.textBaseline = 'middle';
+  x.font = `${Math.round(9.5 * s)}px "Share Tech Mono", ui-monospace, monospace`;
+  for (const tr of FC.tracks) {
+    const pts = tr.pts.map(P), n = pts.length;
+    /* a marker moves to its new step only once the sweep has passed over it, like the echoes */
+    let kk = k;
+    if (beamDeg != null) {
+      const q = pts[k + 1], th = (Math.atan2(q[0] - C, C - q[1]) * R2D + 360) % 360;
+      if (th > beamDeg) kk = (k + FC_N - 1) % FC_N;
+    }
+    x.strokeStyle = `rgba(${tr.col},.8)`; x.lineWidth = (tr.threat ? 1.6 : 1.1) * s;
+    x.setLineDash([2 * s, 3 * s]);
+    x.beginPath(); x.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < n; i++) x.lineTo(pts[i][0], pts[i][1]); x.stroke();
+    x.setLineDash([]);
+    for (let i = 1; i < n; i++) {
+      x.fillStyle = `rgba(${tr.col},${i - 1 <= kk ? 0.95 : 0.45})`;
+      x.beginPath(); x.arc(pts[i][0], pts[i][1], 1.5 * s, 0, TAU); x.fill();
+    }
+    const a = pts[n - 2], b = pts[n - 1], dx = b[0] - a[0], dy = b[1] - a[1], L2 = Math.hypot(dx, dy);
+    if (L2 > 0.5) {
+      const ux = dx / L2, uy = dy / L2, h = 5 * s;
+      x.beginPath(); x.moveTo(b[0] - ux * h - uy * h * 0.6, b[1] - uy * h + ux * h * 0.6); x.lineTo(b[0], b[1]);
+      x.lineTo(b[0] - ux * h + uy * h * 0.6, b[1] - uy * h - ux * h * 0.6); x.stroke();
+    }
+    const c = pts[kk + 1], d = 4 * s;
+    x.strokeStyle = `rgba(${tr.col},1)`; x.lineWidth = 1.3 * s;
+    x.beginPath(); x.moveTo(c[0], c[1] - d); x.lineTo(c[0] + d, c[1]); x.lineTo(c[0], c[1] + d); x.lineTo(c[0] - d, c[1]); x.closePath(); x.stroke();
+    if (tr.label) {
+      const w = x.measureText(tr.label).width;
+      x.fillStyle = 'rgba(0,10,4,.7)'; x.fillRect(c[0] + 6 * s, c[1] - 6 * s - 5.5 * s, w + 4 * s, 11 * s);
+      x.fillStyle = `rgba(${tr.col},.95)`; x.fillText(tr.label, c[0] + 8 * s, c[1] - 6 * s);
+    }
+  }
+  if (FC.threat) {
+    x.strokeStyle = 'rgba(255,194,61,.9)'; x.lineWidth = 1.4 * s;
+    x.beginPath(); x.arc(C, C, 7 * s, 0, TAU); x.stroke();
+  }
+  x.restore();
+}
+function drawField(x) {
+  const vf = FC.vf; if (!vf) return;
+  const { C, RR, s } = FS, kk = RR / VIEW.H, n = 9, step = 2 * RR / n;
+  x.save(); x.strokeStyle = 'rgba(255,194,61,.32)'; x.lineWidth = 1 * s; x.lineCap = 'round';
+  x.beginPath();
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const px = C - RR + (i + 0.5) * step, py = C - RR + (j + 0.5) * step;
+    if (Math.hypot(px - C, py - C) > RR - step * 0.4) continue;
+    const bx = (VIEW.X0 + (px - C) / kk - vf.bx0) / vf.mpp, by = (vf.by1 - (VIEW.Y0 - (py - C) / kk)) / vf.mpp;
+    const ci = Math.floor(by / vf.CS) * vf.cw + Math.floor(bx / vf.CS);
+    if (bx < 0 || by < 0 || ci < 0 || ci >= vf.vx.length || bx >= vf.cw * vf.CS) continue;
+    const u = vf.vx[ci], v = vf.vy[ci], m = Math.hypot(u, v);
+    if (m < 1e-4) continue;
+    const kmh = m * 60 * vf.mpp * Math.cos(VIEW.lat * D2R) / 1000, len = step * 0.42 * clamp(kmh / 40, 0.3, 1);
+    const ux = u / m, uy = v / m, ex = px + ux * len, ey = py + uy * len, h = 3.2 * s;
+    x.moveTo(px - ux * len * 0.4, py - uy * len * 0.4); x.lineTo(ex, ey);
+    x.moveTo(ex - ux * h - uy * h * 0.7, ey - uy * h + ux * h * 0.7); x.lineTo(ex, ey); x.lineTo(ex - ux * h + uy * h * 0.7, ey - uy * h - ux * h * 0.7);
+  }
+  x.stroke(); x.restore();
+}
+function paintFS(t) {
+  if (!FS.PX || !FS.visible) return;
+  const x = FS.ctx, { PX, C } = FS;
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  x.clearRect(0, 0, PX, PX);
+  x.drawImage(FS.L.base, 0, 0);
+  const n = FC.steps.length;
+  let k = 0, beamDeg = null;
+  if (n) {
+    if (UI.reduce) { k = Math.floor(t / 3000) % n; x.drawImage(FC.steps[k], 0, 0); }
+    else {
+      const rev = t / 1000 / FS.period; k = Math.floor(rev) % n; beamDeg = (rev % 1) * 360;
+      const ca = (beamDeg - 90) * D2R;
+      fsMasked(x, FC.steps[k], FS.L.ta, ca, -Math.PI / 2, ca);
+      fsMasked(x, FC.steps[(k + n - 1) % n], FS.L.tb, ca, ca, 1.5 * Math.PI);
+      x.save(); x.globalCompositeOperation = 'lighter'; x.translate(C, C); x.rotate(ca); x.drawImage(FS.L.beam, -C, -C); x.restore();
+    }
+    drawField(x);
+    drawTracks(x, k, beamDeg);
+  }
+  x.drawImage(FS.L.stat, 0, 0);
+  if (k !== FC.k) { FC.k = k; renderFcStep(k); }
+}
+if ('IntersectionObserver' in window) new IntersectionObserver(es => { FS.visible = es[es.length - 1].isIntersecting; }).observe(FS.cv);
 
 /* ================= radar data ================= */
 function decodeBox(box) {
@@ -1163,6 +1607,7 @@ function linkMotion() {
     if (p && p.cells && e.time - p.time <= 1800) track(e.cells, p.cells, (e.time - p.time) / 60);
   }
   computeThreat();
+  updateMotion();
 }
 function computeThreat() {
   const e = liveEntry(); THREAT = null;
@@ -1269,7 +1714,7 @@ function ensureCoast() {
     return true;
   })();
   return GEO.loading.then(
-    ok => { setSource('map', 'ok', 'MAP NATURAL EARTH'); composeBase(); drawWorld(); return ok; },
+    ok => { setSource('map', 'ok', 'MAP NATURAL EARTH'); composeBase(); composeFBase(); drawWorld(); return ok; },
     () => { GEO.loading = null; setSource('map', 'down', 'MAP OFFLINE'); return false; });
 }
 /* trace every arc once: arcs shared by two countries are borders, the rest are coastlines */
@@ -1289,11 +1734,11 @@ function traceArcs(x, proj, lo0, la0, lo1, la1, minStep) {
     }
   }
 }
-function drawCoast(x) {
+function drawCoast(x, G = SC) {
   if (!GEO.arcs) return;
-  const k = SC.RR / VIEW.H, s = SC.s;
+  const k = G.RR / VIEW.H, s = G.s;
   const dLat = VIEW.km / 111 * 1.6, dLon = dLat / Math.max(0.15, Math.cos(VIEW.lat * D2R));
-  const proj = (lo, la) => [SC.C + (mercX(lo) - VIEW.X0) * k, SC.C - (mercY(la) - VIEW.Y0) * k];
+  const proj = (lo, la) => [G.C + (mercX(lo) - VIEW.X0) * k, G.C - (mercY(la) - VIEW.Y0) * k];
   x.save(); x.lineJoin = 'round'; x.lineCap = 'round';
   x.beginPath(); traceArcs(x, proj, VIEW.lon - dLon, VIEW.lat - dLat, VIEW.lon + dLon, VIEW.lat + dLat, 0.8 * s);
   x.strokeStyle = 'rgba(59,255,111,.13)'; x.lineWidth = 3.2 * s; x.stroke();
@@ -1457,7 +1902,7 @@ async function loadForecast() {
   const full = base +
     '&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,rain,showers,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
     '&minutely_15=precipitation,rain,showers' +
-    '&hourly=precipitation_probability,precipitation,rain,showers,weather_code,cloud_cover,cape,lifted_index,relative_humidity_2m,dew_point_2m,visibility,freezing_level_height,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+    '&hourly=precipitation_probability,precipitation,rain,showers,weather_code,cloud_cover,cape,lifted_index,relative_humidity_2m,dew_point_2m,visibility,freezing_level_height,wind_speed_10m,wind_direction_10m,wind_gusts_10m,wind_speed_700hPa,wind_direction_700hPa' +
     '&daily=precipitation_sum,rain_sum,showers_sum,precipitation_hours,precipitation_probability_max,weather_code,wind_gusts_10m_max' +
     '&past_days=1&forecast_days=7&forecast_minutely_15=24&past_minutely_15=8';
   const lite = base +
@@ -1476,6 +1921,7 @@ async function loadForecast() {
     setSource('nwp', 'ok', `NWP ${fmtT(Date.now())}`);
     OFFLINE = false;
     renderNow(); renderHour(); renderDay(); renderAtmo(); renderStatus(); renderModels(); setRadarSource();
+    if (!FC.info || FC.info.src !== 'radar') scheduleForecast();
   } catch (e) {
     if (key === locKey()) setSource('nwp', 'down', 'NWP OFFLINE');
     checkOffline();
@@ -1937,6 +2383,7 @@ function applyView() {
   if (UI.mode !== 'live') { UI.mode = 'live'; clearTimeout(loopTimer); syncButtons(); }
   RV.idx = RV.frames.length - 1;
   buildStatic(); composeBase(); buildEcho();
+  FC.steps = []; FC.tracks = []; FC.threat = null; FC.vf = null; FC.info = { why: 'wait' }; MOT.sat = []; MOT.gen = -1; composeFBase(); renderFcInfo();
   renderHUD(); renderTrack(); renderStatus(); renderSats(); renderTimeline(); drawWorld(); layoutGrid();
   ensureCoast(); loadSat(g); if (UI.layers.gpm) loadGpm(g);
   if (RV.frames.length) { loadFramesForView(g); loadCoverage(g); } else refreshRadar();
@@ -1968,7 +2415,7 @@ async function updateNow() {
   if (UI.layers.gpm && now - (GPMX.t || 0) > 30 * 60000) jobs.push(loadGpm(g));
   if (now - (OM.mt || BOOT) > 30 * 60000) { OM.mt = now; jobs.push(loadModels()); }
   if (now - (WD.irt || BOOT) > 10 * 60000) jobs.push(loadWorldIR());
-  try { await Promise.allSettled(jobs); } finally { cycleBusy = false; renderUpdateBtn(); if (VIEW) { renderTrack(); renderStatus(); } }
+  try { await Promise.allSettled(jobs); } finally { cycleBusy = false; renderUpdateBtn(); if (VIEW) { renderTrack(); renderStatus(); updateMotion(); } }
 }
 function renderUpdateBtn() {
   const b = $('#barNext');
@@ -1998,11 +2445,12 @@ function onResize() {
   rsT = setTimeout(() => {
     layoutGrid();
     if (resizeScope()) { composeBase(); buildEcho(); }
+    resizeFScope();
     sizeWorld();
   }, 120);
 }
 window.addEventListener('resize', onResize);
-if ('ResizeObserver' in window) new ResizeObserver(onResize).observe(SC.cv);
+if ('ResizeObserver' in window) { const ro = new ResizeObserver(onResize); ro.observe(SC.cv); ro.observe(FS.cv); }
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     if (!painting) requestAnimationFrame(paint);
@@ -2014,13 +2462,13 @@ document.addEventListener('visibilitychange', () => {
 const BOOT = Date.now();
 function boot() {
   syncButtons();
-  resizeScope(); sizeWorld();
+  resizeScope(); resizeFScope(); sizeWorld();
   renderSite();
   setLocation(LOC);
   loadWorldIR();
   if (document.fonts && document.fonts.load) {
     Promise.all([document.fonts.load('12px "Share Tech Mono"'), document.fonts.load('12px "Chakra Petch"')])
-      .then(() => { buildStatic(); composeBase(); drawWorld(); }).catch(() => {});
+      .then(() => { buildStatic(); composeBase(); composeFBase(); drawWorld(); }).catch(() => {});
   }
   tick(); setInterval(tick, 1000);
   requestAnimationFrame(paint);
