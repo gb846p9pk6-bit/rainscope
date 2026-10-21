@@ -37,7 +37,7 @@ button{cursor:pointer}
 :focus-visible{outline:1px solid var(--glow);outline-offset:2px}
 
 .console{position:relative;height:100vh;height:100dvh;min-height:560px;display:grid;
-  grid-template-columns:minmax(258px,300px) minmax(0,1fr) minmax(290px,350px);
+  grid-template-columns:minmax(230px,270px) minmax(0,1fr) minmax(270px,320px);
   grid-template-rows:auto minmax(0,1fr) auto;
   grid-template-areas:"top top top" "left center right" "bar bar bar";
   column-gap:18px;row-gap:12px;
@@ -109,8 +109,20 @@ tr.sev td{color:var(--alarm)}
 .readouts .key{grid-column:1/-1;justify-self:start}
 
 /* scope */
-.scope{position:relative;width:min(100%,calc(100vh - 250px));aspect-ratio:1/1;max-width:100%;flex:none}
-@supports (height:100dvh){.scope{width:min(100%,calc(100dvh - 250px))}}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;width:100%;align-items:start;justify-items:center}
+.pin{width:min(100%,calc(100vh - 330px));display:flex;flex-direction:column;gap:6px;min-width:0}
+@supports (height:100dvh){.pin{width:min(100%,calc(100dvh - 330px))}}
+.pcap{display:flex;align-items:baseline;gap:8px;height:22px;white-space:nowrap;overflow:hidden;font:600 10.5px/1.6 var(--font-display);letter-spacing:.12em;color:var(--dim)}
+.pcap b{font-weight:600;font-size:12px;color:var(--phosphor);letter-spacing:.16em}
+.pcap.f b:first-child{color:var(--amber)}
+.pcap .fst{font-size:14px;letter-spacing:.06em;color:var(--amber);text-shadow:0 0 10px rgba(255,194,61,.35)}
+.pcap .ft{font:400 12px/1.6 var(--font-data);letter-spacing:.04em;color:var(--glow)}
+.scope{position:relative;width:100%;aspect-ratio:1/1;max-width:100%;flex:none;container-type:inline-size}
+@container (max-width:460px){
+  .hud{font-size:9.5px}
+  .hud .xs{display:none}
+  .threat-flag{font-size:9.5px;padding:3px 6px}
+}
 .scope canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
 .scope::after{content:"";position:absolute;inset:6%;border-radius:50%;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.2) 0 1px,transparent 1px 3px)}
 .hud{position:absolute;font-size:10.5px;line-height:1.35;color:var(--dim);pointer-events:none;max-width:30%}
@@ -212,15 +224,12 @@ tr.active td{color:var(--glow)}
 .p-world canvas{display:block;width:100%;aspect-ratio:1.9/1;max-width:100%;cursor:crosshair;touch-action:manipulation;background:#000a03}
 
 /* forecast sweep */
-.fline{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 0 6px}
-.fline b{font:600 15px/1.1 var(--font-display);letter-spacing:.06em;color:var(--amber);text-shadow:0 0 10px rgba(255,194,61,.35)}
-.fline .ft{color:var(--glow)}
-.fline .fmot{margin-left:auto;color:var(--dim);font-size:10.5px}
-.fscope{position:relative;width:100%;max-width:520px;margin:0 auto;aspect-ratio:1/1}
+.fmot{text-align:center;color:var(--dim);font-size:10.5px}
+.fscope{position:relative;width:100%;max-width:100%;aspect-ratio:1/1}
 .fscope canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .fscope::after{content:"";position:absolute;inset:9%;border-radius:50%;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.2) 0 1px,transparent 1px 3px)}
 .fmsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);margin:0;width:max-content;max-width:72%;text-align:center;color:var(--dim);font:12px/1.45 var(--font-display);background:rgba(0,8,3,.85);padding:6px 10px}
-.fsteps{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-top:6px}
+.fsteps{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
 .fsteps span{text-align:center;font-size:9.5px;color:var(--dim);border-top:2px solid var(--trace);padding-top:3px}
 .fsteps span.on{color:var(--glow);border-top-color:var(--amber)}
 .fthreat{margin:7px 0 0;font:12.5px/1.45 var(--font-display);color:var(--phosphor)}
@@ -245,7 +254,7 @@ tr.active td{color:var(--glow)}
 .bar a:hover{color:var(--phosphor)}
 
 /* ---------- tablet & phone: one scrolling page ---------- */
-@media (max-width:1179px){
+@media (max-width:1365px){
   .console{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:none;grid-template-rows:none;grid-auto-flow:row dense;height:auto;min-height:0;overflow:visible}
   .top,.center,.bar,.col.left,.col.right{grid-area:auto}
   .col{display:contents}
@@ -253,11 +262,12 @@ tr.active td{color:var(--glow)}
   .top{order:1}.p-status{order:3}.center{order:4}.p-fcst{order:5}
   .p-read{order:6}.p-now{order:7}.p-track{order:8}.p-hour{order:9}.p-day{order:10}.p-atmo{order:11}.p-models{order:12}.p-world{order:13}.p-sats{order:14}.bar{order:15}
   .p-now,.p-hour,.p-track,.p-fcst{grid-column:1/-1}
-  .scope{width:min(100%,720px)}
+  .pin{width:100%}
   .clocks{margin-left:0}
 }
 @media (max-width:719px){
   .console{grid-template-columns:minmax(0,1fr);row-gap:10px}
+  .pair{grid-template-columns:minmax(0,1fr)}
   .p-read,.p-day,.p-atmo,.p-models,.p-world,.p-sats{grid-column:1/-1}
   .brand h1{font-size:19px}
   .hud{font-size:9.5px}
@@ -296,13 +306,7 @@ tr.active td{color:var(--glow)}
 
   <aside class="col left">
     <section class="panel p-fcst" aria-labelledby="hFcst">
-      <h2 class="ph" id="hFcst"><b>FORECAST SWEEP · จำลองพายุ</b><small>+60 MIN</small></h2>
-      <div class="fline"><b id="fStep">NOW</b><span class="ft" id="fTime">--:--</span><span class="fmot" id="fMotion">—</span></div>
-      <div class="fscope">
-        <canvas id="fscope" aria-label="Simulated storm movement over the next 60 minutes"></canvas>
-        <p class="fmsg" id="fMsg">รอภาพเรดาร์…</p>
-      </div>
-      <div class="fsteps" id="fSteps" aria-hidden="true"><span class="on">NOW</span><span>+10</span><span>+20</span><span>+30</span><span>+40</span><span>+50</span><span>+60</span></div>
+      <h2 class="ph" id="hFcst"><b>FORECAST · จำลองพายุ</b><small>+60 MIN</small></h2>
       <p class="fthreat" id="fThreat" aria-live="polite">—</p>
       <p class="fsrc" id="fSrc">—</p>
       <p class="note">ทิศการเคลื่อนที่คำนวณจากภาพเรดาร์รวมทุกสถานี (เทียบภาพล่าสุดกับภาพก่อนหน้า) และการเคลื่อนที่ของเมฆจากดาวเทียมทุกดวงที่มองเห็นพื้นที่นี้ ลูกศรจางคือทิศที่คำนวณได้ เส้นประคือทางที่กลุ่มฝนจะไป จุดคือทุก 10 นาที ไม่รวมฝนที่จะก่อตัวหรือสลายใหม่ จึงไม่ใช่ภาพเรดาร์จริง</p>
@@ -340,14 +344,28 @@ tr.active td{color:var(--glow)}
   </aside>
 
   <main class="center">
-    <div class="scope" id="scopeBox">
-      <canvas id="scope" aria-label="Rain radar plan position indicator"></canvas>
-      <div class="hud tl" id="hudTL"></div>
-      <div class="hud tr" id="hudTR"></div>
-      <div class="hud bl" id="hudBL"></div>
-      <div class="hud br" id="hudBR"></div>
-      <div class="threat-flag" id="threatFlag" hidden></div>
-      <div class="tip" id="tip" hidden></div>
+    <div class="pair">
+      <div class="pin">
+        <div class="pcap"><b>LIVE</b><span>เรดาร์สด</span></div>
+        <div class="scope" id="scopeBox">
+          <canvas id="scope" aria-label="Rain radar plan position indicator"></canvas>
+          <div class="hud tl" id="hudTL"></div>
+          <div class="hud tr" id="hudTR"></div>
+          <div class="hud bl" id="hudBL"></div>
+          <div class="hud br" id="hudBR"></div>
+          <div class="threat-flag" id="threatFlag" hidden></div>
+          <div class="tip" id="tip" hidden></div>
+        </div>
+      </div>
+      <div class="pin">
+        <div class="pcap f"><b>FORECAST</b><b class="fst" id="fStep">NOW</b><span class="ft" id="fTime">--:--</span><span>จำลอง</span></div>
+        <div class="fscope">
+          <canvas id="fscope" aria-label="Simulated storm movement over the next 60 minutes"></canvas>
+          <p class="fmsg" id="fMsg">รอภาพเรดาร์…</p>
+        </div>
+        <div class="fsteps" id="fSteps" aria-hidden="true"><span class="on">NOW</span><span>+10</span><span>+20</span><span>+30</span><span>+40</span><span>+50</span><span>+60</span></div>
+        <div class="fmot" id="fMotion">—</div>
+      </div>
     </div>
 
     <div class="ctrl">
@@ -816,7 +834,7 @@ function resizeScope() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const PX = Math.min(1400, Math.round(css * dpr));
   if (PX === SC.PX) return false;
-  SC.PX = PX; SC.s = PX / css; SC.C = PX / 2; SC.RR = SC.C - 31 * SC.s;
+  SC.PX = PX; SC.css = css; SC.s = PX / css; SC.C = PX / 2; SC.RR = SC.C - 31 * SC.s;
   SC.cv.width = PX; SC.cv.height = PX;
   for (const k of ['base', 'echo', 'tmp', 'stat', 'mask', 'beam']) L[k] = mkCanvas(PX, PX);
   buildMask(); buildBeam(); buildStatic();
@@ -859,7 +877,7 @@ function drawBeamTo(cv, PX, C, RR, s, rgb = [59, 255, 111], line = 'rgba(214,255
   x.restore();
 }
 function buildStatic() {
-  drawStaticTo(L.stat, SC.PX, SC.C, SC.RR, SC.s, 30, '#3bff6f');
+  drawStaticTo(L.stat, SC.PX, SC.C, SC.RR, SC.s, SC.css < 460 ? 90 : 30, '#3bff6f');
   if (FS.PX) drawStaticTo(FS.L.stat, FS.PX, FS.C, FS.RR, FS.s, 90, '#e0a93a');
 }
 function drawStaticTo(cv, PX, C, RR, s, labStep, rim) {
@@ -939,28 +957,30 @@ function composeBase() {
     tx.globalCompositeOperation = 'source-in'; tx.fillStyle = hatchPattern(tx); tx.fillRect(0, 0, PX, PX);
     x.globalAlpha = 0.45; x.drawImage(t, 0, 0); x.globalAlpha = 1;
   }
-  if (UI.layers.map) {
-    const k = RR / VIEW.H, occ = [], a52 = (52 - 90) * D2R;
-    const hit = r => occ.some(o => r[0] < o[0] + o[2] && r[0] + r[2] > o[0] && r[1] < o[1] + o[3] && r[1] + r[3] > o[1]);
-    x.textBaseline = 'middle';
-    x.font = `${Math.round(10.5 * s)}px "Share Tech Mono", ui-monospace, monospace`;
-    for (let i = 1; i <= 4; i++) {
-      const r = RR * i / 4, tx = C + Math.cos(a52) * r + 3 * s, ty = C + Math.sin(a52) * r - 7 * s;
-      occ.push([tx - 2 * s, ty - 7 * s, x.measureText(fmtRing(VIEW.km * i / 4)).width + 4 * s, 14 * s]);
-    }
-    x.font = `${Math.round(10 * s)}px "Share Tech Mono", ui-monospace, monospace`;
-    for (const p of ALL_PLACES) {
-      const px = C + (mercX(p[2]) - VIEW.X0) * k, py = C - (mercY(p[1]) - VIEW.Y0) * k, dc = Math.hypot(px - C, py - C);
-      if (dc > RR - 12 * s || dc < 10 * s) continue;
-      const label = p[0].split(' · ').pop().toUpperCase();
-      const rect = [px - 3 * s, py - 7 * s, x.measureText(label).width + 9 * s, 14 * s];
-      if (hit(rect) || Math.hypot(rect[0] + rect[2] - C, py - C) > RR - 4 * s) continue;
-      occ.push(rect);
-      x.fillStyle = 'rgba(198,255,212,.85)'; x.fillRect(px - 1.5 * s, py - 1.5 * s, 3 * s, 3 * s);
-      x.fillStyle = 'rgba(59,255,111,.7)'; x.fillText(label, px + 5 * s, py);
-    }
-  }
+  if (UI.layers.map) drawPlaces(x, SC);
   x.restore();
+}
+/* province and city names, kept clear of each other and of the ring distance labels */
+function drawPlaces(x, G) {
+  const { C, RR, s } = G, k = RR / VIEW.H, occ = [], a52 = (52 - 90) * D2R;
+  const hit = r => occ.some(o => r[0] < o[0] + o[2] && r[0] + r[2] > o[0] && r[1] < o[1] + o[3] && r[1] + r[3] > o[1]);
+  x.textBaseline = 'middle'; x.textAlign = 'left';
+  x.font = `${Math.round(10.5 * s)}px "Share Tech Mono", ui-monospace, monospace`;
+  for (let i = 1; i <= 4; i++) {
+    const r = RR * i / 4, tx = C + Math.cos(a52) * r + 3 * s, ty = C + Math.sin(a52) * r - 7 * s;
+    occ.push([tx - 2 * s, ty - 7 * s, x.measureText(fmtRing(VIEW.km * i / 4)).width + 4 * s, 14 * s]);
+  }
+  x.font = `${Math.round(10 * s)}px "Share Tech Mono", ui-monospace, monospace`;
+  for (const p of ALL_PLACES) {
+    const px = C + (mercX(p[2]) - VIEW.X0) * k, py = C - (mercY(p[1]) - VIEW.Y0) * k, dc = Math.hypot(px - C, py - C);
+    if (dc > RR - 12 * s || dc < 10 * s) continue;
+    const label = p[0].split(' · ').pop().toUpperCase();
+    const rect = [px - 3 * s, py - 7 * s, x.measureText(label).width + 9 * s, 14 * s];
+    if (hit(rect) || Math.hypot(rect[0] + rect[2] - C, py - C) > RR - 4 * s) continue;
+    occ.push(rect);
+    x.fillStyle = 'rgba(198,255,212,.85)'; x.fillRect(px - 1.5 * s, py - 1.5 * s, 3 * s, 3 * s);
+    x.fillStyle = 'rgba(59,255,111,.7)'; x.fillText(label, px + 5 * s, py);
+  }
 }
 function curEntry() { const f = RV.frames[RV.idx]; return f ? RV.data.get(f.time) : null; }
 function liveEntry() { const f = RV.frames[RV.frames.length - 1]; return f ? RV.data.get(f.time) : null; }
@@ -1252,6 +1272,7 @@ function composeFBase() {
   g.addColorStop(0, '#0b1605'); g.addColorStop(0.75, '#050c03'); g.addColorStop(1, '#030701');
   x.fillStyle = g; x.fillRect(0, 0, PX, PX);
   drawCoast(x, FS);
+  drawPlaces(x, FS);
   x.restore();
 }
 /* storm motion from the model: wind at 700 hPa (meteorological "from" direction) turned into a velocity */
